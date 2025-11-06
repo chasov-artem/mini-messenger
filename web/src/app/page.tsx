@@ -23,15 +23,25 @@ export default function Home() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
+  const [joinId, setJoinId] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
 
   const canChat = Boolean(user.id && conversationId);
 
   useEffect(() => {
     if (!conversationId) return;
+    // initial history load
+    fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
+      .then((r) => r.json())
+      .then((data: Message[]) => setMessages(data))
+      .catch(() => {});
+
     const wsUrl = API_BASE.replace(/^http/, "ws");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "join", conversationId }));
+    };
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -48,6 +58,15 @@ export default function Home() {
       ws.close();
       wsRef.current = null;
     };
+  }, [conversationId]);
+
+  // Best-effort: if socket is already open when conversationId changes, (re)send join
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws || !conversationId) return;
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "join", conversationId }));
+    }
   }, [conversationId]);
 
   async function handleCreateUser() {
@@ -81,15 +100,28 @@ export default function Home() {
     }
   }
 
+  function handleJoinConversation() {
+    if (!joinId.trim()) return;
+    setConversationId(joinId.trim());
+    setMessages([]);
+  }
+
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
     const body = { conversationId, authorId: user.id, text: text.trim() };
     setText("");
-    await fetch(`${API_BASE}/messages`, {
+    const res = await fetch(`${API_BASE}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    try {
+      const created = (await res.json()) as Message;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === created.id)) return prev;
+        return [...prev, created];
+      });
+    } catch {}
   }
 
   return (
@@ -120,16 +152,33 @@ export default function Home() {
         )}
 
         {user.id && !conversationId && (
-          <button
-            className="bg-emerald-600 text-white px-4 py-2 rounded"
-            onClick={handleCreateConversation}
-          >
-            Create conversation
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              className="bg-emerald-600 text-white px-4 py-2 rounded"
+              onClick={handleCreateConversation}
+            >
+              Create conversation
+            </button>
+            <div className="flex gap-2">
+              <input
+                className="border rounded px-3 py-2 w-full"
+                placeholder="Paste conversation ID to join"
+                value={joinId}
+                onChange={(e) => setJoinId(e.target.value)}
+              />
+              <button
+                className="bg-zinc-800 text-white px-4 py-2 rounded"
+                onClick={handleJoinConversation}
+              >
+                Join
+              </button>
+            </div>
+          </div>
         )}
 
         {user.id && conversationId && (
           <div className="space-y-3">
+            <div className="text-xs text-gray-500">Conversation ID: <span className="font-mono select-all">{conversationId}</span></div>
             <div className="border rounded p-3 h-80 overflow-y-auto bg-white">
               {messages.length === 0 ? (
                 <div className="text-gray-400 text-sm">No messages yet</div>
@@ -137,7 +186,9 @@ export default function Home() {
                 <ul className="space-y-2">
                   {messages.map((m) => (
                     <li key={m.id} className="text-sm">
-                      <span className="font-medium">{m.author?.username ?? m.authorId}:</span>{" "}
+                      <span className="font-medium">
+                        {m.author?.username ?? m.authorId}:
+                      </span>{" "}
                       <span>{m.text}</span>
                     </li>
                   ))}

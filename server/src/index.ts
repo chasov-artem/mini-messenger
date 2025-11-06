@@ -49,6 +49,22 @@ app.post('/conversations', async (req, res) => {
   }
 });
 
+app.get('/conversations', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || '';
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const memberships = await prisma.membership.findMany({ where: { userId } });
+    const conversationIds = memberships.map((m) => m.conversationId);
+    const conversations = await prisma.conversation.findMany({
+      where: { id: { in: conversationIds } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(conversations);
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to list conversations' });
+  }
+});
+
 // Messages
 app.post('/messages', async (req, res) => {
   try {
@@ -64,10 +80,11 @@ app.post('/messages', async (req, res) => {
       data: { conversationId, authorId, text },
       include: { author: true },
     });
-    // Broadcast to all clients for now
+    // Broadcast only to clients joined to this conversation
     const payload = JSON.stringify({ type: 'message:new', payload: message });
     wss.clients.forEach((client) => {
-      if ((client as any).readyState === 1) client.send(payload);
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) client.send(payload);
     });
     res.status(201).json(message);
   } catch (e: any) {
@@ -75,16 +92,35 @@ app.post('/messages', async (req, res) => {
   }
 });
 
+app.get('/messages', async (req, res) => {
+  try {
+    const conversationId = (req.query.conversationId as string) || '';
+    if (!conversationId) return res.status(400).json({ error: 'conversationId required' });
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      include: { author: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(messages);
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to list messages' });
+  }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
+  (ws as any).roomId = null as string | null;
   ws.send(JSON.stringify({ type: 'welcome', payload: 'connected' }));
   ws.on('message', (raw) => {
     try {
       const data = JSON.parse(raw.toString());
-      // echo for now
-      ws.send(JSON.stringify({ type: 'echo', payload: data }));
+      if (data?.type === 'join' && typeof data?.conversationId === 'string') {
+        (ws as any).roomId = data.conversationId;
+        ws.send(JSON.stringify({ type: 'joined', conversationId: data.conversationId }));
+        return;
+      }
     } catch (e) {
       ws.send(JSON.stringify({ type: 'error', payload: 'invalid json' }));
     }
