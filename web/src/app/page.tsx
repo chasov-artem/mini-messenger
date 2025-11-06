@@ -16,6 +16,12 @@ type Message = {
   author?: { id: string; username: string };
 };
 
+type Conversation = {
+  id: string;
+  title: string;
+  createdAt: string;
+};
+
 export default function Home() {
   const dispatch = useDispatch();
   const user = useSelector((s: RootState) => s.user);
@@ -24,6 +30,8 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [joinId, setJoinId] = useState("");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   const canChat = Boolean(user.id && conversationId);
@@ -79,6 +87,7 @@ export default function Home() {
     const data = await res.json();
     if (res.ok) {
       dispatch(setUser({ id: data.id, username: data.username }));
+      void loadConversations(data.id as string);
     } else {
       alert(data?.error ?? "Failed to create user");
     }
@@ -95,6 +104,10 @@ export default function Home() {
     if (res.ok) {
       setConversationId(data.id as string);
       setMessages([]);
+      setConversations((prev) => [
+        { id: data.id as string, title: data.title as string, createdAt: data.createdAt as string },
+        ...prev,
+      ]);
     } else {
       alert(data?.error ?? "Failed to create conversation");
     }
@@ -105,6 +118,25 @@ export default function Home() {
     setConversationId(joinId.trim());
     setMessages([]);
   }
+
+  async function loadConversations(explicitUserId?: string) {
+    const uid = explicitUserId ?? user.id;
+    if (!uid) return;
+    try {
+      setIsLoadingConversations(true);
+      const r = await fetch(`${API_BASE}/conversations?userId=${uid}`);
+      const data = (await r.json()) as Conversation[];
+      setConversations(data);
+    } catch {}
+    finally {
+      setIsLoadingConversations(false);
+    }
+  }
+
+  useEffect(() => {
+    if (user.id) void loadConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
 
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
@@ -126,7 +158,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen p-6 sm:p-10">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-[260px_1fr]">
         <h1 className="text-2xl font-semibold">Mini Messenger</h1>
 
         {!user.id ? (
@@ -151,34 +183,67 @@ export default function Home() {
           </div>
         )}
 
-        {user.id && !conversationId && (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              className="bg-emerald-600 text-white px-4 py-2 rounded"
-              onClick={handleCreateConversation}
-            >
-              Create conversation
-            </button>
+        {user.id && (
+          <aside className="space-y-3">
+            <div className="flex gap-2">
+              <button
+                className="bg-emerald-600 text-white px-3 py-2 rounded w-full"
+                onClick={handleCreateConversation}
+              >
+                + New conversation
+              </button>
+            </div>
             <div className="flex gap-2">
               <input
                 className="border rounded px-3 py-2 w-full"
-                placeholder="Paste conversation ID to join"
+                placeholder="Paste conversation ID"
                 value={joinId}
                 onChange={(e) => setJoinId(e.target.value)}
               />
               <button
-                className="bg-zinc-800 text-white px-4 py-2 rounded"
+                className="bg-zinc-800 text-white px-3 py-2 rounded"
                 onClick={handleJoinConversation}
               >
                 Join
               </button>
             </div>
-          </div>
+            <div className="border rounded">
+              <div className="flex items-center justify-between px-3 py-2 text-sm text-gray-600">
+                <span>Conversations</span>
+                <button className="text-xs underline" onClick={() => loadConversations()} disabled={isLoadingConversations}>
+                  {isLoadingConversations ? "…" : "Refresh"}
+                </button>
+              </div>
+              <ul className="divide-y">
+                {conversations.length === 0 ? (
+                  <li className="px-3 py-2 text-sm text-gray-400">No conversations</li>
+                ) : (
+                  conversations.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        className={`px-3 py-2 w-full text-left text-sm ${conversationId === c.id ? "bg-zinc-100" : ""}`}
+                        onClick={() => {
+                          setConversationId(c.id);
+                          setMessages([]);
+                        }}
+                      >
+                        {c.title}
+                        <div className="text-xs text-gray-500 font-mono">{c.id}</div>
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </aside>
         )}
 
         {user.id && conversationId && (
           <div className="space-y-3">
-            <div className="text-xs text-gray-500">Conversation ID: <span className="font-mono select-all">{conversationId}</span></div>
+            <div className="text-xs text-gray-500">
+              Conversation ID:{" "}
+              <span className="font-mono select-all">{conversationId}</span>
+            </div>
             <div className="border rounded p-3 h-80 overflow-y-auto bg-white">
               {messages.length === 0 ? (
                 <div className="text-gray-400 text-sm">No messages yet</div>
