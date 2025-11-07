@@ -94,7 +94,7 @@ export default function Home() {
       ws.close();
       wsRef.current = null;
     };
-  }, [conversationId]);
+  }, [conversationId, user.id]);
 
   // Best-effort: if socket is already open when conversationId changes, (re)send join
   useEffect(() => {
@@ -412,103 +412,107 @@ export default function Home() {
                           : true,
                       )
                       .map((m) => {
-                    const isOwn = m.authorId === user.id;
-                    const isEditing = editingMessageId === m.id;
-                    return (
-                      <li
-                        key={m.id}
-                        className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
-                      >
-                        <div
-                          className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
-                            isOwn
-                              ? "bg-blue-600 text-white"
-                              : "bg-white border text-gray-900"
-                          }`}
-                        >
-                          {!isOwn && (
+                        const isOwn = m.authorId === user.id;
+                        const isEditing = editingMessageId === m.id;
+                        return (
+                          <li
+                            key={m.id}
+                            className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
+                          >
                             <div
-                              className={`text-xs font-semibold mb-1 ${
-                                isOwn ? "text-blue-100" : "text-gray-600"
+                              className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
+                                isOwn
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-white border text-gray-900"
                               }`}
                             >
-                              {m.author?.username ?? m.authorId}
-                            </div>
-                          )}
-                          {isEditing ? (
-                            <div className="space-y-2">
-                              <input
-                                className="w-full px-2 py-1 rounded text-gray-900 text-sm"
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleEdit(m.id);
-                                  }
-                                  if (e.key === "Escape") {
-                                    setEditingMessageId(null);
-                                    setEditText("");
-                                  }
-                                }}
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  className="text-xs px-2 py-1 bg-white text-blue-600 rounded hover:bg-gray-100"
-                                  onClick={() => handleEdit(m.id)}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                                  onClick={() => {
-                                    setEditingMessageId(null);
-                                    setEditText("");
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="text-sm">{m.text}</div>
-                              <div className="flex items-center justify-between gap-2">
+                              {!isOwn && (
                                 <div
-                                  className={`text-xs mt-1 ${
-                                    isOwn ? "text-blue-100" : "text-gray-400"
+                                  className={`text-xs font-semibold mb-1 ${
+                                    isOwn ? "text-blue-100" : "text-gray-600"
                                   }`}
                                 >
-                                  {formatTime(m.createdAt)}
+                                  {m.author?.username ?? m.authorId}
                                 </div>
-                                {isOwn && (
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              )}
+                              {isEditing ? (
+                                <div className="space-y-2">
+                                  <input
+                                    className="w-full px-2 py-1 rounded text-gray-900 text-sm"
+                                    value={editText}
+                                    onChange={(e) =>
+                                      setEditText(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleEdit(m.id);
+                                      }
+                                      if (e.key === "Escape") {
+                                        setEditingMessageId(null);
+                                        setEditText("");
+                                      }
+                                    }}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
                                     <button
-                                      className="text-xs px-2 py-1 rounded hover:bg-blue-700"
-                                      onClick={() => {
-                                        setEditingMessageId(m.id);
-                                        setEditText(m.text);
-                                      }}
-                                      title="Edit"
+                                      className="text-xs px-2 py-1 bg-white text-blue-600 rounded hover:bg-gray-100"
+                                      onClick={() => handleEdit(m.id)}
                                     >
-                                      ✏️
+                                      Save
                                     </button>
                                     <button
-                                      className="text-xs px-2 py-1 rounded hover:bg-blue-700"
-                                      onClick={() => handleDelete(m.id)}
-                                      title="Delete"
+                                      className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                      onClick={() => {
+                                        setEditingMessageId(null);
+                                        setEditText("");
+                                      }}
                                     >
-                                      🗑️
+                                      Cancel
                                     </button>
                                   </div>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </li>
-                    );
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="text-sm">{m.text}</div>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div
+                                      className={`text-xs mt-1 ${
+                                        isOwn
+                                          ? "text-blue-100"
+                                          : "text-gray-400"
+                                      }`}
+                                    >
+                                      {formatTime(m.createdAt)}
+                                    </div>
+                                    {isOwn && (
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                          onClick={() => {
+                                            setEditingMessageId(m.id);
+                                            setEditText(m.text);
+                                          }}
+                                          title="Edit"
+                                        >
+                                          ✏️
+                                        </button>
+                                        <button
+                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                          onClick={() => handleDelete(m.id)}
+                                          title="Delete"
+                                        >
+                                          🗑️
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </li>
+                        );
                       })}
                   </ul>
                   {Object.keys(typingUsers).length > 0 && (
