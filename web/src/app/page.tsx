@@ -34,6 +34,11 @@ export default function Home() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [typingUsers, setTypingUsers] = useState<
+    Record<string, { username: string; timestamp: number }>
+  >({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -48,7 +53,13 @@ export default function Home() {
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "join", conversationId }));
+      ws.send(
+        JSON.stringify({
+          type: "join",
+          conversationId,
+          userId: user.id,
+        }),
+      );
     };
     ws.onmessage = (event) => {
       try {
@@ -62,11 +73,20 @@ export default function Home() {
         } else if (data?.type === "message:updated") {
           const updated = data.payload as Message;
           setMessages((prev) =>
-            prev.map((m) => (m.id === updated.id ? updated : m))
+            prev.map((m) => (m.id === updated.id ? updated : m)),
           );
         } else if (data?.type === "message:deleted") {
           const { id } = data.payload as { id: string };
           setMessages((prev) => prev.filter((m) => m.id !== id));
+        } else if (data?.type === "typing") {
+          const { userId, username } = data.payload as {
+            userId: string;
+            username: string;
+          };
+          setTypingUsers((prev) => ({
+            ...prev,
+            [userId]: { username, timestamp: Date.now() },
+          }));
         }
       } catch {}
     };
@@ -79,11 +99,17 @@ export default function Home() {
   // Best-effort: if socket is already open when conversationId changes, (re)send join
   useEffect(() => {
     const ws = wsRef.current;
-    if (!ws || !conversationId) return;
+    if (!ws || !conversationId || !user.id) return;
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "join", conversationId }));
+      ws.send(
+        JSON.stringify({
+          type: "join",
+          conversationId,
+          userId: user.id,
+        }),
+      );
     }
-  }, [conversationId]);
+  }, [conversationId, user.id]);
 
   async function handleCreateUser() {
     if (!usernameInput.trim()) return;
@@ -149,6 +175,51 @@ export default function Home() {
     if (user.id) void loadConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
+
+  // Clean up old typing indicators
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTypingUsers((prev) => {
+        const now = Date.now();
+        const updated = { ...prev };
+        let changed = false;
+        for (const [userId, data] of Object.entries(updated)) {
+          if (now - data.timestamp >= 3000) {
+            delete updated[userId];
+            changed = true;
+          }
+        }
+        return changed ? updated : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  function sendTypingIndicator() {
+    const ws = wsRef.current;
+    if (!ws || !conversationId || !user.id || ws.readyState !== WebSocket.OPEN)
+      return;
+    ws.send(
+      JSON.stringify({
+        type: "typing",
+        userId: user.id,
+        username: user.username,
+        conversationId,
+      }),
+    );
+  }
+
+  function handleTextChange(newText: string) {
+    setText(newText);
+    if (newText.trim() && conversationId && user.id) {
+      if (typingDebounceRef.current) {
+        clearTimeout(typingDebounceRef.current);
+      }
+      typingDebounceRef.current = setTimeout(() => {
+        sendTypingIndicator();
+      }, 500);
+    }
+  }
 
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
@@ -311,9 +382,18 @@ export default function Home() {
 
         {user.id && conversationId && (
           <div className="space-y-3">
-            <div className="text-xs text-gray-500">
-              Conversation ID:{" "}
-              <span className="font-mono select-all">{conversationId}</span>
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-500">
+                Conversation ID:{" "}
+                <span className="font-mono select-all">{conversationId}</span>
+              </div>
+              <input
+                type="text"
+                className="border rounded px-2 py-1 text-sm w-40"
+                placeholder="Search messages..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
             <div className="border rounded p-4 h-96 overflow-y-auto bg-gray-50">
               {messages.length === 0 ? (
@@ -321,8 +401,17 @@ export default function Home() {
                   No messages yet. Start the conversation!
                 </div>
               ) : (
-                <ul className="space-y-3">
-                  {messages.map((m) => {
+                <>
+                  <ul className="space-y-3">
+                    {messages
+                      .filter((m) =>
+                        searchQuery
+                          ? m.text
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase())
+                          : true,
+                      )
+                      .map((m) => {
                     const isOwn = m.authorId === user.id;
                     const isEditing = editingMessageId === m.id;
                     return (
@@ -420,8 +509,18 @@ export default function Home() {
                         </div>
                       </li>
                     );
-                  })}
-                </ul>
+                      })}
+                  </ul>
+                  {Object.keys(typingUsers).length > 0 && (
+                    <div className="text-xs text-gray-500 italic mt-2 px-2">
+                      {Object.values(typingUsers)
+                        .map((u) => u.username)
+                        .join(", ")}{" "}
+                      {Object.keys(typingUsers).length === 1 ? "is" : "are"}{" "}
+                      typing...
+                    </div>
+                  )}
+                </>
               )}
             </div>
             <div className="flex gap-2">
@@ -429,7 +528,7 @@ export default function Home() {
                 className="border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Type a message..."
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => handleTextChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();

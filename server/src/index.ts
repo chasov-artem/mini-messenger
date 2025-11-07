@@ -165,13 +165,29 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
   (ws as any).roomId = null as string | null;
+  (ws as any).userId = null as string | null;
   ws.send(JSON.stringify({ type: 'welcome', payload: 'connected' }));
   ws.on('message', (raw) => {
     try {
       const data = JSON.parse(raw.toString());
       if (data?.type === 'join' && typeof data?.conversationId === 'string') {
         (ws as any).roomId = data.conversationId;
+        if (data.userId) (ws as any).userId = data.userId;
         ws.send(JSON.stringify({ type: 'joined', conversationId: data.conversationId }));
+        return;
+      }
+      if (data?.type === 'typing' && typeof data?.userId === 'string' && typeof data?.conversationId === 'string') {
+        // Broadcast typing to others in room
+        const payload = JSON.stringify({
+          type: 'typing',
+          payload: { userId: data.userId, username: data.username, conversationId: data.conversationId },
+        });
+        wss.clients.forEach((client) => {
+          if ((client as any).readyState !== 1) return;
+          if ((client as any).roomId === data.conversationId && (client as any).userId !== data.userId) {
+            client.send(payload);
+          }
+        });
         return;
       }
     } catch (e) {
