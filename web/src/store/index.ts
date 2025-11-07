@@ -1,4 +1,6 @@
 import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { persistStore, persistReducer } from "redux-persist";
+import storage from "redux-persist/lib/storage";
 
 type UserState = {
   id: string | null;
@@ -24,12 +26,22 @@ const userSlice = createSlice({
 
 export const { setUser, clearUser } = userSlice.actions;
 
+const persistConfig = {
+  key: "root",
+  storage,
+  whitelist: ["user"],
+};
+
+const persistedUserReducer = persistReducer(persistConfig, userSlice.reducer);
+
 export const store = configureStore({
   reducer: {
-    user: userSlice.reducer,
+    user: persistedUserReducer,
   },
   devTools: process.env.NODE_ENV !== "production",
 });
+
+export const persistor = persistStore(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

@@ -105,7 +105,11 @@ export default function Home() {
       setConversationId(data.id as string);
       setMessages([]);
       setConversations((prev) => [
-        { id: data.id as string, title: data.title as string, createdAt: data.createdAt as string },
+        {
+          id: data.id as string,
+          title: data.title as string,
+          createdAt: data.createdAt as string,
+        },
         ...prev,
       ]);
     } else {
@@ -127,8 +131,8 @@ export default function Home() {
       const r = await fetch(`${API_BASE}/conversations?userId=${uid}`);
       const data = (await r.json()) as Conversation[];
       setConversations(data);
-    } catch {}
-    finally {
+    } catch {
+    } finally {
       setIsLoadingConversations(false);
     }
   }
@@ -210,13 +214,19 @@ export default function Home() {
             <div className="border rounded">
               <div className="flex items-center justify-between px-3 py-2 text-sm text-gray-600">
                 <span>Conversations</span>
-                <button className="text-xs underline" onClick={() => loadConversations()} disabled={isLoadingConversations}>
+                <button
+                  className="text-xs underline"
+                  onClick={() => loadConversations()}
+                  disabled={isLoadingConversations}
+                >
                   {isLoadingConversations ? "…" : "Refresh"}
                 </button>
               </div>
               <ul className="divide-y">
                 {conversations.length === 0 ? (
-                  <li className="px-3 py-2 text-sm text-gray-400">No conversations</li>
+                  <li className="px-3 py-2 text-sm text-gray-400">
+                    No conversations
+                  </li>
                 ) : (
                   conversations.map((c) => (
                     <li key={c.id}>
@@ -228,7 +238,9 @@ export default function Home() {
                         }}
                       >
                         {c.title}
-                        <div className="text-xs text-gray-500 font-mono">{c.id}</div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {c.id}
+                        </div>
                       </button>
                     </li>
                   ))
