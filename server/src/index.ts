@@ -107,6 +107,59 @@ app.get('/messages', async (req, res) => {
   }
 });
 
+app.patch('/messages/:id', async (req, res) => {
+  try {
+    const messageId = req.params.id;
+    const { text, authorId } = req.body as { text?: string; authorId?: string };
+    if (!text || !authorId) {
+      return res.status(400).json({ error: 'text and authorId required' });
+    }
+    const existing = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!existing) return res.status(404).json({ error: 'message not found' });
+    if (existing.authorId !== authorId) {
+      return res.status(403).json({ error: 'not authorized to edit this message' });
+    }
+    const updated = await prisma.message.update({
+      where: { id: messageId },
+      data: { text },
+      include: { author: true },
+    });
+    // Broadcast update to room
+    const payload = JSON.stringify({ type: 'message:updated', payload: updated });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === updated.conversationId) client.send(payload);
+    });
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to update message' });
+  }
+});
+
+app.delete('/messages/:id', async (req, res) => {
+  try {
+    const messageId = req.params.id;
+    const { authorId } = req.body as { authorId?: string };
+    if (!authorId) return res.status(400).json({ error: 'authorId required' });
+    const existing = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!existing) return res.status(404).json({ error: 'message not found' });
+    if (existing.authorId !== authorId) {
+      return res.status(403).json({ error: 'not authorized to delete this message' });
+    }
+    const conversationId = existing.conversationId;
+    await prisma.message.delete({ where: { id: messageId } });
+    // Broadcast deletion to room
+    const payload = JSON.stringify({ type: 'message:deleted', payload: { id: messageId, conversationId } });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) client.send(payload);
+    });
+    res.json({ success: true, id: messageId });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to delete message' });
+  }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 

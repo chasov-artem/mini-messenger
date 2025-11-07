@@ -32,6 +32,8 @@ export default function Home() {
   const [joinId, setJoinId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -57,6 +59,14 @@ export default function Home() {
             if (prev.some((m) => m.id === incoming.id)) return prev;
             return [...prev, incoming];
           });
+        } else if (data?.type === "message:updated") {
+          const updated = data.payload as Message;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updated.id ? updated : m))
+          );
+        } else if (data?.type === "message:deleted") {
+          const { id } = data.payload as { id: string };
+          setMessages((prev) => prev.filter((m) => m.id !== id));
         }
       } catch {}
     };
@@ -158,9 +168,41 @@ export default function Home() {
     } catch {}
   }
 
+  async function handleEdit(messageId: string) {
+    if (!user.id || !editText.trim()) return;
+    const res = await fetch(`${API_BASE}/messages/${messageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: editText.trim(), authorId: user.id }),
+    });
+    if (res.ok) {
+      setEditingMessageId(null);
+      setEditText("");
+    } else {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to edit message");
+    }
+  }
+
+  async function handleDelete(messageId: string) {
+    if (!user.id || !confirm("Delete this message?")) return;
+    const res = await fetch(`${API_BASE}/messages/${messageId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorId: user.id }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to delete message");
+    }
+  }
+
   function formatTime(dateString: string) {
     const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   return (
@@ -282,13 +324,14 @@ export default function Home() {
                 <ul className="space-y-3">
                   {messages.map((m) => {
                     const isOwn = m.authorId === user.id;
+                    const isEditing = editingMessageId === m.id;
                     return (
                       <li
                         key={m.id}
-                        className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+                        className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
                       >
                         <div
-                          className={`max-w-[75%] rounded-lg px-4 py-2 ${
+                          className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
                             isOwn
                               ? "bg-blue-600 text-white"
                               : "bg-white border text-gray-900"
@@ -303,14 +346,77 @@ export default function Home() {
                               {m.author?.username ?? m.authorId}
                             </div>
                           )}
-                          <div className="text-sm">{m.text}</div>
-                          <div
-                            className={`text-xs mt-1 ${
-                              isOwn ? "text-blue-100" : "text-gray-400"
-                            }`}
-                          >
-                            {formatTime(m.createdAt)}
-                          </div>
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <input
+                                className="w-full px-2 py-1 rounded text-gray-900 text-sm"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleEdit(m.id);
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingMessageId(null);
+                                    setEditText("");
+                                  }
+                                }}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  className="text-xs px-2 py-1 bg-white text-blue-600 rounded hover:bg-gray-100"
+                                  onClick={() => handleEdit(m.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                  onClick={() => {
+                                    setEditingMessageId(null);
+                                    setEditText("");
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="text-sm">{m.text}</div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div
+                                  className={`text-xs mt-1 ${
+                                    isOwn ? "text-blue-100" : "text-gray-400"
+                                  }`}
+                                >
+                                  {formatTime(m.createdAt)}
+                                </div>
+                                {isOwn && (
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                      onClick={() => {
+                                        setEditingMessageId(m.id);
+                                        setEditText(m.text);
+                                      }}
+                                      title="Edit"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button
+                                      className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                      onClick={() => handleDelete(m.id)}
+                                      title="Delete"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </li>
                     );
