@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
-import { setUser } from "@/store";
+import { setUser, clearUser } from "@/store";
 
 const API_BASE = "http://localhost:4000";
 
@@ -33,8 +33,6 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-
-  const canChat = Boolean(user.id && conversationId);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -160,6 +158,11 @@ export default function Home() {
     } catch {}
   }
 
+  function formatTime(dateString: string) {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  }
+
   return (
     <div className="min-h-screen p-6 sm:p-10">
       <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-[260px_1fr]">
@@ -181,9 +184,23 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span>Signed in as</span>
-            <span className="font-medium">{user.username}</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>Signed in as</span>
+              <span className="font-medium">{user.username}</span>
+            </div>
+            <button
+              className="text-xs text-red-600 hover:underline"
+              onClick={() => {
+                dispatch(clearUser());
+                setConversationId(null);
+                setMessages([]);
+                setConversations([]);
+                wsRef.current?.close();
+              }}
+            >
+              Logout
+            </button>
           </div>
         )}
 
@@ -256,32 +273,68 @@ export default function Home() {
               Conversation ID:{" "}
               <span className="font-mono select-all">{conversationId}</span>
             </div>
-            <div className="border rounded p-3 h-80 overflow-y-auto bg-white">
+            <div className="border rounded p-4 h-96 overflow-y-auto bg-gray-50">
               {messages.length === 0 ? (
-                <div className="text-gray-400 text-sm">No messages yet</div>
+                <div className="text-gray-400 text-sm text-center py-8">
+                  No messages yet. Start the conversation!
+                </div>
               ) : (
-                <ul className="space-y-2">
-                  {messages.map((m) => (
-                    <li key={m.id} className="text-sm">
-                      <span className="font-medium">
-                        {m.author?.username ?? m.authorId}:
-                      </span>{" "}
-                      <span>{m.text}</span>
-                    </li>
-                  ))}
+                <ul className="space-y-3">
+                  {messages.map((m) => {
+                    const isOwn = m.authorId === user.id;
+                    return (
+                      <li
+                        key={m.id}
+                        className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[75%] rounded-lg px-4 py-2 ${
+                            isOwn
+                              ? "bg-blue-600 text-white"
+                              : "bg-white border text-gray-900"
+                          }`}
+                        >
+                          {!isOwn && (
+                            <div
+                              className={`text-xs font-semibold mb-1 ${
+                                isOwn ? "text-blue-100" : "text-gray-600"
+                              }`}
+                            >
+                              {m.author?.username ?? m.authorId}
+                            </div>
+                          )}
+                          <div className="text-sm">{m.text}</div>
+                          <div
+                            className={`text-xs mt-1 ${
+                              isOwn ? "text-blue-100" : "text-gray-400"
+                            }`}
+                          >
+                            {formatTime(m.createdAt)}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
             <div className="flex gap-2">
               <input
-                className="border rounded px-3 py-2 w-full"
-                placeholder="Type a message"
+                className="border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Type a message..."
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
               />
               <button
-                className="bg-blue-600 text-white px-4 py-2 rounded"
+                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition-colors"
                 onClick={handleSend}
+                disabled={!text.trim()}
               >
                 Send
               </button>
