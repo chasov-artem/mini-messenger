@@ -65,6 +65,19 @@ app.get('/conversations', async (req, res) => {
   }
 });
 
+app.get('/conversations/:id/members', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const memberships = await prisma.membership.findMany({
+      where: { conversationId },
+      include: { user: true },
+    });
+    res.json(memberships.map((m) => m.user));
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to list members' });
+  }
+});
+
 // Messages
 app.post('/messages', async (req, res) => {
   try {
@@ -236,6 +249,23 @@ app.post('/messages/:id/reactions', async (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Track online users per conversation
+const onlineUsers = new Map<string, Set<string>>(); // conversationId -> Set<userId>
+
+function broadcastOnlineUsers(conversationId: string) {
+  const userIds = Array.from(onlineUsers.get(conversationId) || []);
+  const payload = JSON.stringify({
+    type: 'users:online',
+    payload: { conversationId, userIds },
+  });
+  wss.clients.forEach((client) => {
+    if ((client as any).readyState !== 1) return;
+    if ((client as any).roomId === conversationId) {
+      client.send(payload);
+    }
+  });
+}
+
 wss.on('connection', (ws) => {
   (ws as any).roomId = null as string | null;
   (ws as any).userId = null as string | null;
@@ -244,8 +274,30 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(raw.toString());
       if (data?.type === 'join' && typeof data?.conversationId === 'string') {
+        const oldRoomId = (ws as any).roomId;
+        const oldUserId = (ws as any).userId;
         (ws as any).roomId = data.conversationId;
         if (data.userId) (ws as any).userId = data.userId;
+        // Remove from old room
+        if (oldRoomId && oldUserId) {
+          const oldRoomUsers = onlineUsers.get(oldRoomId);
+          if (oldRoomUsers) {
+            oldRoomUsers.delete(oldUserId);
+            if (oldRoomUsers.size === 0) {
+              onlineUsers.delete(oldRoomId);
+            } else {
+              broadcastOnlineUsers(oldRoomId);
+            }
+          }
+        }
+        // Add to new room
+        if (data.userId && data.conversationId) {
+          if (!onlineUsers.has(data.conversationId)) {
+            onlineUsers.set(data.conversationId, new Set());
+          }
+          onlineUsers.get(data.conversationId)!.add(data.userId);
+          broadcastOnlineUsers(data.conversationId);
+        }
         ws.send(JSON.stringify({ type: 'joined', conversationId: data.conversationId }));
         return;
       }
@@ -265,6 +317,21 @@ wss.on('connection', (ws) => {
       }
     } catch (e) {
       ws.send(JSON.stringify({ type: 'error', payload: 'invalid json' }));
+    }
+  });
+  ws.on('close', () => {
+    const roomId = (ws as any).roomId;
+    const userId = (ws as any).userId;
+    if (roomId && userId) {
+      const roomUsers = onlineUsers.get(roomId);
+      if (roomUsers) {
+        roomUsers.delete(userId);
+        if (roomUsers.size === 0) {
+          onlineUsers.delete(roomId);
+        } else {
+          broadcastOnlineUsers(roomId);
+        }
+      }
     }
   });
 });

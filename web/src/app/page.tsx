@@ -46,6 +46,10 @@ export default function Home() {
     Record<string, { username: string; timestamp: number }>
   >({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [conversationMembers, setConversationMembers] = useState<
+    Array<{ id: string; username: string }>
+  >([]);
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -55,6 +59,13 @@ export default function Home() {
     fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
       .then((r) => r.json())
       .then((data: Message[]) => setMessages(data))
+      .catch(() => {});
+    // load conversation members
+    fetch(`${API_BASE}/conversations/${conversationId}/members`)
+      .then((r) => r.json())
+      .then((data: Array<{ id: string; username: string }>) =>
+        setConversationMembers(data),
+      )
       .catch(() => {});
 
     const wsUrl = API_BASE.replace(/^http/, "ws");
@@ -95,11 +106,17 @@ export default function Home() {
             ...prev,
             [userId]: { username, timestamp: Date.now() },
           }));
-        } else if (data?.type === "reaction:added" || data?.type === "reaction:removed") {
+        } else if (
+          data?.type === "reaction:added" ||
+          data?.type === "reaction:removed"
+        ) {
           const { message } = data.payload as { message: Message };
           setMessages((prev) =>
             prev.map((m) => (m.id === message.id ? message : m)),
           );
+        } else if (data?.type === "users:online") {
+          const { userIds } = data.payload as { userIds: string[] };
+          setOnlineUserIds(new Set(userIds));
         }
       } catch {}
     };
@@ -151,6 +168,8 @@ export default function Home() {
     if (res.ok) {
       setConversationId(data.id as string);
       setMessages([]);
+      setOnlineUserIds(new Set());
+      setConversationMembers([]);
       setConversations((prev) => [
         {
           id: data.id as string,
@@ -168,6 +187,8 @@ export default function Home() {
     if (!joinId.trim()) return;
     setConversationId(joinId.trim());
     setMessages([]);
+    setOnlineUserIds(new Set());
+    setConversationMembers([]);
   }
 
   async function loadConversations(explicitUserId?: string) {
@@ -387,6 +408,8 @@ export default function Home() {
                         onClick={() => {
                           setConversationId(c.id);
                           setMessages([]);
+                          setOnlineUserIds(new Set());
+                          setConversationMembers([]);
                         }}
                       >
                         {c.title}
@@ -399,6 +422,35 @@ export default function Home() {
                 )}
               </ul>
             </div>
+            {conversationId && conversationMembers.length > 0 && (
+              <div className="border rounded">
+                <div className="px-3 py-2 text-sm text-gray-600">
+                  Members ({conversationMembers.length})
+                </div>
+                <ul className="divide-y">
+                  {conversationMembers.map((member) => {
+                    const isOnline = onlineUserIds.has(member.id);
+                    return (
+                      <li
+                        key={member.id}
+                        className="px-3 py-2 text-sm flex items-center gap-2"
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isOnline ? "bg-green-500" : "bg-gray-300"
+                          }`}
+                          title={isOnline ? "Online" : "Offline"}
+                        />
+                        <span>{member.username}</span>
+                        {member.id === user.id && (
+                          <span className="text-xs text-gray-400">(You)</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </aside>
         )}
 
@@ -450,11 +502,18 @@ export default function Home() {
                             >
                               {!isOwn && (
                                 <div
-                                  className={`text-xs font-semibold mb-1 ${
+                                  className={`text-xs font-semibold mb-1 flex items-center gap-1 ${
                                     isOwn ? "text-blue-100" : "text-gray-600"
                                   }`}
                                 >
                                   {m.author?.username ?? m.authorId}
+                                  {m.authorId &&
+                                    onlineUserIds.has(m.authorId) && (
+                                      <span
+                                        className="w-2 h-2 bg-green-500 rounded-full"
+                                        title="Online"
+                                      />
+                                    )}
                                 </div>
                               )}
                               {isEditing ? (
@@ -531,7 +590,10 @@ export default function Home() {
                                               handleToggleReaction(m.id, emoji)
                                             }
                                             title={reactions
-                                              .map((r) => r.user?.username ?? r.userId)
+                                              .map(
+                                                (r) =>
+                                                  r.user?.username ?? r.userId,
+                                              )
                                               .join(", ")}
                                           >
                                             {emoji} {reactions.length}
@@ -553,11 +615,14 @@ export default function Home() {
                                       </div>
                                       <button
                                         className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
-                                          isOwn ? "text-blue-200" : "text-gray-500"
+                                          isOwn
+                                            ? "text-blue-200"
+                                            : "text-gray-500"
                                         }`}
                                         onClick={() => {
                                           const emoji = prompt("Enter emoji:");
-                                          if (emoji) handleToggleReaction(m.id, emoji);
+                                          if (emoji)
+                                            handleToggleReaction(m.id, emoji);
                                         }}
                                         title="Add reaction"
                                       >
