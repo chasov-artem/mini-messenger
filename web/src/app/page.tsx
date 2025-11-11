@@ -7,6 +7,13 @@ import { setUser, clearUser } from "@/store";
 
 const API_BASE = "http://localhost:4000";
 
+type Reaction = {
+  id: string;
+  emoji: string;
+  userId: string;
+  user?: { id: string; username: string };
+};
+
 type Message = {
   id: string;
   text: string;
@@ -14,6 +21,7 @@ type Message = {
   conversationId: string;
   createdAt: string;
   author?: { id: string; username: string };
+  reactions?: Reaction[];
 };
 
 type Conversation = {
@@ -87,6 +95,11 @@ export default function Home() {
             ...prev,
             [userId]: { username, timestamp: Date.now() },
           }));
+        } else if (data?.type === "reaction:added" || data?.type === "reaction:removed") {
+          const { message } = data.payload as { message: Message };
+          setMessages((prev) =>
+            prev.map((m) => (m.id === message.id ? message : m)),
+          );
         }
       } catch {}
     };
@@ -266,6 +279,15 @@ export default function Home() {
       const data = await res.json();
       alert(data?.error ?? "Failed to delete message");
     }
+  }
+
+  async function handleToggleReaction(messageId: string, emoji: string) {
+    if (!user.id) return;
+    await fetch(`${API_BASE}/messages/${messageId}/reactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, emoji }),
+    });
   }
 
   function formatTime(dateString: string) {
@@ -476,15 +498,71 @@ export default function Home() {
                               ) : (
                                 <>
                                   <div className="text-sm">{m.text}</div>
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div
-                                      className={`text-xs mt-1 ${
-                                        isOwn
-                                          ? "text-blue-100"
-                                          : "text-gray-400"
-                                      }`}
-                                    >
-                                      {formatTime(m.createdAt)}
+                                  {m.reactions && m.reactions.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {Object.entries(
+                                        m.reactions.reduce(
+                                          (acc, r) => {
+                                            if (!acc[r.emoji]) {
+                                              acc[r.emoji] = [];
+                                            }
+                                            acc[r.emoji].push(r);
+                                            return acc;
+                                          },
+                                          {} as Record<string, Reaction[]>,
+                                        ),
+                                      ).map(([emoji, reactions]) => {
+                                        const hasUserReaction = reactions.some(
+                                          (r) => r.userId === user.id,
+                                        );
+                                        return (
+                                          <button
+                                            key={emoji}
+                                            className={`text-xs px-2 py-1 rounded border ${
+                                              hasUserReaction
+                                                ? isOwn
+                                                  ? "bg-blue-500 border-blue-400"
+                                                  : "bg-blue-100 border-blue-300"
+                                                : isOwn
+                                                  ? "bg-blue-700 border-blue-600"
+                                                  : "bg-gray-100 border-gray-300"
+                                            } hover:opacity-80`}
+                                            onClick={() =>
+                                              handleToggleReaction(m.id, emoji)
+                                            }
+                                            title={reactions
+                                              .map((r) => r.user?.username ?? r.userId)
+                                              .join(", ")}
+                                          >
+                                            {emoji} {reactions.length}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between gap-2 mt-2">
+                                    <div className="flex items-center gap-2">
+                                      <div
+                                        className={`text-xs ${
+                                          isOwn
+                                            ? "text-blue-100"
+                                            : "text-gray-400"
+                                        }`}
+                                      >
+                                        {formatTime(m.createdAt)}
+                                      </div>
+                                      <button
+                                        className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
+                                          isOwn ? "text-blue-200" : "text-gray-500"
+                                        }`}
+                                        onClick={() => {
+                                          const emoji = prompt("Enter emoji:");
+                                          if (emoji) handleToggleReaction(m.id, emoji);
+                                        }}
+                                        title="Add reaction"
+                                      >
+                                        😀
+                                      </button>
                                     </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

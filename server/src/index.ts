@@ -78,7 +78,10 @@ app.post('/messages', async (req, res) => {
     }
     const message = await prisma.message.create({
       data: { conversationId, authorId, text },
-      include: { author: true },
+      include: {
+        author: true,
+        reactions: { include: { user: true } },
+      },
     });
     // Broadcast only to clients joined to this conversation
     const payload = JSON.stringify({ type: 'message:new', payload: message });
@@ -98,7 +101,10 @@ app.get('/messages', async (req, res) => {
     if (!conversationId) return res.status(400).json({ error: 'conversationId required' });
     const messages = await prisma.message.findMany({
       where: { conversationId },
-      include: { author: true },
+      include: {
+        author: true,
+        reactions: { include: { user: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     res.json(messages);
@@ -122,7 +128,10 @@ app.patch('/messages/:id', async (req, res) => {
     const updated = await prisma.message.update({
       where: { id: messageId },
       data: { text },
-      include: { author: true },
+      include: {
+        author: true,
+        reactions: { include: { user: true } },
+      },
     });
     // Broadcast update to room
     const payload = JSON.stringify({ type: 'message:updated', payload: updated });
@@ -157,6 +166,70 @@ app.delete('/messages/:id', async (req, res) => {
     res.json({ success: true, id: messageId });
   } catch (e: any) {
     res.status(400).json({ error: e?.message ?? 'failed to delete message' });
+  }
+});
+
+// Reactions
+app.post('/messages/:id/reactions', async (req, res) => {
+  try {
+    const messageId = req.params.id;
+    const { userId, emoji } = req.body as { userId?: string; emoji?: string };
+    if (!userId || !emoji) {
+      return res.status(400).json({ error: 'userId and emoji required' });
+    }
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: { reactions: { include: { user: true } } },
+    });
+    if (!message) return res.status(404).json({ error: 'message not found' });
+    // Toggle reaction: if exists, delete it; otherwise create it
+    const existing = await prisma.reaction.findUnique({
+      where: { messageId_userId_emoji: { messageId, userId, emoji } },
+    });
+    if (existing) {
+      await prisma.reaction.delete({ where: { id: existing.id } });
+      const updated = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          author: true,
+          reactions: { include: { user: true } },
+        },
+      });
+      // Broadcast reaction removal
+      const payload = JSON.stringify({
+        type: 'reaction:removed',
+        payload: { messageId, userId, emoji, message: updated },
+      });
+      wss.clients.forEach((client) => {
+        if ((client as any).readyState !== 1) return;
+        if ((client as any).roomId === message.conversationId) client.send(payload);
+      });
+      res.json(updated);
+    } else {
+      const reaction = await prisma.reaction.create({
+        data: { messageId, userId, emoji },
+        include: { user: true },
+      });
+      const updated = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          author: true,
+          reactions: { include: { user: true } },
+        },
+      });
+      // Broadcast reaction addition
+      const payload = JSON.stringify({
+        type: 'reaction:added',
+        payload: { messageId, reaction, message: updated },
+      });
+      wss.clients.forEach((client) => {
+        if ((client as any).readyState !== 1) return;
+        if ((client as any).roomId === message.conversationId) client.send(payload);
+      });
+      res.json(updated);
+    }
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to toggle reaction' });
   }
 });
 
