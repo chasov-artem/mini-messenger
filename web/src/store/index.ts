@@ -38,6 +38,16 @@ export const store = configureStore({
   reducer: {
     user: persistedUserReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: [
+          "persist/PERSIST",
+          "persist/REHYDRATE",
+          "persist/REGISTER",
+        ],
+      },
+    }),
   devTools: process.env.NODE_ENV !== "production",
 });
 
