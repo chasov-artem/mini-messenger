@@ -332,7 +332,10 @@ export default function Home() {
           </h1>
           <button
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            onClick={() => dispatch(toggleTheme())}
+            onClick={() => {
+              dispatch(toggleTheme());
+              console.log("Theme toggled, current theme:", theme);
+            }}
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
             {theme === "light" ? "🌙" : "☀️"}
@@ -649,7 +652,7 @@ export default function Home() {
                                         }
                                         title="Add reaction"
                                       />
-                                    </div>
+        </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
@@ -714,7 +717,7 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 }
