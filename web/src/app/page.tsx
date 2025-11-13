@@ -6,7 +6,8 @@ import type { RootState } from "@/store";
 import { setUser, clearUser, toggleTheme } from "@/store";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
 
-const API_BASE = "http://localhost:4000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 type Reaction = {
   id: string;
@@ -70,7 +71,9 @@ export default function Home() {
       )
       .catch(() => {});
 
-    const wsUrl = API_BASE.replace(/^http/, "ws");
+    const wsUrl =
+      process.env.NEXT_PUBLIC_WS_URL ||
+      API_BASE.replace(/^http/, "ws").replace(/^https/, "wss");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
@@ -454,7 +457,9 @@ export default function Home() {
                       >
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            isOnline ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
+                            isOnline
+                              ? "bg-green-500"
+                              : "bg-gray-300 dark:bg-gray-600"
                           }`}
                           title={isOnline ? "Online" : "Offline"}
                         />

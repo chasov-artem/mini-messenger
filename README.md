@@ -157,15 +157,53 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 ## 🚢 Deployment
 
-### Backend
-- Build: `npm run build`
-- Start: `npm start`
-- Set `PORT` environment variable
+### Backend (Render)
 
-### Frontend
-- Build: `npm run build`
-- Start: `npm start`
-- Or deploy to Vercel/Netlify
+1. **Create a new Web Service on Render:**
+   - Connect your GitHub repository
+   - Select the `server` directory as the root directory
+   - Build Command: `npm install && npx prisma generate && npm run build && npx prisma migrate deploy`
+   - Start Command: `npm start`
+   - Environment Variables:
+     - `PORT` = `4000` (or let Render assign automatically)
+     - `DATABASE_URL` = `file:./prisma/dev.db` (or use Render's PostgreSQL if preferred)
+
+2. **For Docker deployment (alternative):**
+   - Use the provided `Dockerfile` in the `server` directory
+   - Render will automatically detect and use it
+
+3. **Note:** After deployment, copy the WebSocket URL (e.g., `wss://your-app.onrender.com`) for frontend configuration
+
+### Frontend (Vercel)
+
+1. **Deploy to Vercel:**
+   - Import your GitHub repository in Vercel
+   - Set Root Directory to `web`
+   - Framework Preset: Next.js (auto-detected)
+   - Build Command: `npm run build` (default)
+   - Install Command: `npm install` (default)
+
+2. **Environment Variables:**
+   - `NEXT_PUBLIC_API_URL` = `https://your-backend.onrender.com` (your Render backend URL)
+   - `NEXT_PUBLIC_WS_URL` = `wss://your-backend.onrender.com` (WebSocket URL, use `wss://` for secure connection)
+
+3. **Deploy:** Click "Deploy" and Vercel will build and deploy your app
+
+### Manual Deployment
+
+**Backend:**
+```bash
+cd server
+npm run build
+npm start
+```
+
+**Frontend:**
+```bash
+cd web
+npm run build
+npm start
+```
 
 ## 📄 License
 
