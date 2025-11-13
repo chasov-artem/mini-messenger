@@ -6,8 +6,7 @@ import type { RootState } from "@/store";
 import { setUser, clearUser, toggleTheme } from "@/store";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 type Reaction = {
   id: string;
