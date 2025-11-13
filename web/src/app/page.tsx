@@ -652,7 +652,7 @@ export default function Home() {
                                         }
                                         title="Add reaction"
                                       />
-        </div>
+                                    </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
@@ -717,7 +717,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        </div>
+      </div>
     </div>
   );
 }
