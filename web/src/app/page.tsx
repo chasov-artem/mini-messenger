@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { setUser, clearUser } from "@/store";
+import EmojiPickerButton from "@/components/EmojiPickerButton";
 
 const API_BASE = "http://localhost:4000";
 
@@ -613,22 +614,18 @@ export default function Home() {
                                       >
                                         {formatTime(m.createdAt)}
                                       </div>
-                                      <button
+                                      <EmojiPickerButton
                                         className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
                                           isOwn
                                             ? "text-blue-200"
                                             : "text-gray-500"
                                         }`}
-                                        onClick={() => {
-                                          const emoji = prompt("Enter emoji:");
-                                          if (emoji)
-                                            handleToggleReaction(m.id, emoji);
-                                        }}
+                                        onEmojiClick={(emoji) =>
+                                          handleToggleReaction(m.id, emoji)
+                                        }
                                         title="Add reaction"
-                                      >
-                                        😀
-                                      </button>
-                                    </div>
+                                      />
+        </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
@@ -693,7 +690,7 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 }
