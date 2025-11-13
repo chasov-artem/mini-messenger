@@ -26,17 +26,50 @@ const userSlice = createSlice({
 
 export const { setUser, clearUser } = userSlice.actions;
 
-const persistConfig = {
-  key: "root",
-  storage,
-  whitelist: ["user"],
+type ThemeState = {
+  mode: "light" | "dark";
 };
 
-const persistedUserReducer = persistReducer(persistConfig, userSlice.reducer);
+const initialThemeState: ThemeState = { mode: "light" };
+
+const themeSlice = createSlice({
+  name: "theme",
+  initialState: initialThemeState,
+  reducers: {
+    setTheme(state, action: PayloadAction<"light" | "dark">) {
+      state.mode = action.payload;
+    },
+    toggleTheme(state) {
+      state.mode = state.mode === "light" ? "dark" : "light";
+    },
+  },
+});
+
+export const { setTheme, toggleTheme } = themeSlice.actions;
+
+const userPersistConfig = {
+  key: "user",
+  storage,
+};
+
+const themePersistConfig = {
+  key: "theme",
+  storage,
+};
+
+const persistedUserReducer = persistReducer(
+  userPersistConfig,
+  userSlice.reducer,
+);
+const persistedThemeReducer = persistReducer(
+  themePersistConfig,
+  themeSlice.reducer,
+);
 
 export const store = configureStore({
   reducer: {
     user: persistedUserReducer,
+    theme: persistedThemeReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

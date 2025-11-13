@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
-import { setUser, clearUser } from "@/store";
+import { setUser, clearUser, toggleTheme } from "@/store";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
 
 const API_BASE = "http://localhost:4000";
@@ -34,6 +34,7 @@ type Conversation = {
 export default function Home() {
   const dispatch = useDispatch();
   const user = useSelector((s: RootState) => s.user);
+  const theme = useSelector((s: RootState) => s.theme.mode);
   const [usernameInput, setUsernameInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -321,33 +322,44 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen p-6 sm:p-10">
+    <div className="min-h-screen p-6 sm:p-10 bg-white dark:bg-gray-900">
       <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-[260px_1fr]">
-        <h1 className="text-2xl font-semibold">Mini Messenger</h1>
+        <div className="flex items-center justify-between sm:col-span-2">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+            Mini Messenger
+          </h1>
+          <button
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            onClick={() => dispatch(toggleTheme())}
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          >
+            {theme === "light" ? "🌙" : "☀️"}
+          </button>
+        </div>
 
         {!user.id ? (
-          <div className="flex gap-2">
+          <div className="flex gap-2 sm:col-span-2">
             <input
-              className="border rounded px-3 py-2 w-full"
+              className="border rounded px-3 py-2 w-full bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               placeholder="Enter username"
               value={usernameInput}
               onChange={(e) => setUsernameInput(e.target.value)}
             />
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded"
+              className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
               onClick={handleCreateUser}
             >
               Continue
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex items-center justify-between sm:col-span-2">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <span>Signed in as</span>
               <span className="font-medium">{user.username}</span>
             </div>
             <button
-              className="text-xs text-red-600 hover:underline"
+              className="text-xs text-red-600 dark:text-red-400 hover:underline"
               onClick={() => {
                 dispatch(clearUser());
                 setConversationId(null);
@@ -365,7 +377,7 @@ export default function Home() {
           <aside className="space-y-3">
             <div className="flex gap-2">
               <button
-                className="bg-emerald-600 text-white px-3 py-2 rounded w-full"
+                className="bg-emerald-600 dark:bg-emerald-500 text-white px-3 py-2 rounded w-full hover:bg-emerald-700 dark:hover:bg-emerald-600"
                 onClick={handleCreateConversation}
               >
                 + New conversation
@@ -373,39 +385,43 @@ export default function Home() {
             </div>
             <div className="flex gap-2">
               <input
-                className="border rounded px-3 py-2 w-full"
+                className="border rounded px-3 py-2 w-full bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="Paste conversation ID"
                 value={joinId}
                 onChange={(e) => setJoinId(e.target.value)}
               />
               <button
-                className="bg-zinc-800 text-white px-3 py-2 rounded"
+                className="bg-zinc-800 dark:bg-zinc-700 text-white px-3 py-2 rounded hover:bg-zinc-900 dark:hover:bg-zinc-600"
                 onClick={handleJoinConversation}
               >
                 Join
               </button>
             </div>
-            <div className="border rounded">
-              <div className="flex items-center justify-between px-3 py-2 text-sm text-gray-600">
+            <div className="border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
+              <div className="flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
                 <span>Conversations</span>
                 <button
-                  className="text-xs underline"
+                  className="text-xs underline hover:text-gray-900 dark:hover:text-gray-200"
                   onClick={() => loadConversations()}
                   disabled={isLoadingConversations}
                 >
                   {isLoadingConversations ? "…" : "Refresh"}
                 </button>
               </div>
-              <ul className="divide-y">
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                 {conversations.length === 0 ? (
-                  <li className="px-3 py-2 text-sm text-gray-400">
+                  <li className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
                     No conversations
                   </li>
                 ) : (
                   conversations.map((c) => (
                     <li key={c.id}>
                       <button
-                        className={`px-3 py-2 w-full text-left text-sm ${conversationId === c.id ? "bg-zinc-100" : ""}`}
+                        className={`px-3 py-2 w-full text-left text-sm ${
+                          conversationId === c.id
+                            ? "bg-zinc-100 dark:bg-gray-700 text-gray-900 dark:text-white"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }`}
                         onClick={() => {
                           setConversationId(c.id);
                           setMessages([]);
@@ -414,7 +430,7 @@ export default function Home() {
                         }}
                       >
                         {c.title}
-                        <div className="text-xs text-gray-500 font-mono">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                           {c.id}
                         </div>
                       </button>
@@ -424,27 +440,29 @@ export default function Home() {
               </ul>
             </div>
             {conversationId && conversationMembers.length > 0 && (
-              <div className="border rounded">
-                <div className="px-3 py-2 text-sm text-gray-600">
+              <div className="border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
+                <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
                   Members ({conversationMembers.length})
                 </div>
-                <ul className="divide-y">
+                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                   {conversationMembers.map((member) => {
                     const isOnline = onlineUserIds.has(member.id);
                     return (
                       <li
                         key={member.id}
-                        className="px-3 py-2 text-sm flex items-center gap-2"
+                        className="px-3 py-2 text-sm flex items-center gap-2 text-gray-700 dark:text-gray-300"
                       >
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            isOnline ? "bg-green-500" : "bg-gray-300"
+                            isOnline ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
                           }`}
                           title={isOnline ? "Online" : "Offline"}
                         />
                         <span>{member.username}</span>
                         {member.id === user.id && (
-                          <span className="text-xs text-gray-400">(You)</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            (You)
+                          </span>
                         )}
                       </li>
                     );
@@ -458,21 +476,21 @@ export default function Home() {
         {user.id && conversationId && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
                 Conversation ID:{" "}
                 <span className="font-mono select-all">{conversationId}</span>
               </div>
               <input
                 type="text"
-                className="border rounded px-2 py-1 text-sm w-40"
+                className="border rounded px-2 py-1 text-sm w-40 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="Search messages..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="border rounded p-4 h-96 overflow-y-auto bg-gray-50">
+            <div className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800">
               {messages.length === 0 ? (
-                <div className="text-gray-400 text-sm text-center py-8">
+                <div className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
                   No messages yet. Start the conversation!
                 </div>
               ) : (
@@ -497,14 +515,16 @@ export default function Home() {
                             <div
                               className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
                                 isOwn
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-white border text-gray-900"
+                                  ? "bg-blue-600 dark:bg-blue-500 text-white"
+                                  : "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                               }`}
                             >
                               {!isOwn && (
                                 <div
                                   className={`text-xs font-semibold mb-1 flex items-center gap-1 ${
-                                    isOwn ? "text-blue-100" : "text-gray-600"
+                                    isOwn
+                                      ? "text-blue-100"
+                                      : "text-gray-600 dark:text-gray-300"
                                   }`}
                                 >
                                   {m.author?.username ?? m.authorId}
@@ -520,7 +540,7 @@ export default function Home() {
                               {isEditing ? (
                                 <div className="space-y-2">
                                   <input
-                                    className="w-full px-2 py-1 rounded text-gray-900 text-sm"
+                                    className="w-full px-2 py-1 rounded text-gray-900 dark:text-white bg-white dark:bg-gray-600 text-sm border border-gray-300 dark:border-gray-500"
                                     value={editText}
                                     onChange={(e) =>
                                       setEditText(e.target.value)
@@ -539,13 +559,13 @@ export default function Home() {
                                   />
                                   <div className="flex gap-2">
                                     <button
-                                      className="text-xs px-2 py-1 bg-white text-blue-600 rounded hover:bg-gray-100"
+                                      className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
                                       onClick={() => handleEdit(m.id)}
                                     >
                                       Save
                                     </button>
                                     <button
-                                      className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                      className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-500 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-400"
                                       onClick={() => {
                                         setEditingMessageId(null);
                                         setEditText("");
@@ -581,11 +601,11 @@ export default function Home() {
                                             className={`text-xs px-2 py-1 rounded border ${
                                               hasUserReaction
                                                 ? isOwn
-                                                  ? "bg-blue-500 border-blue-400"
-                                                  : "bg-blue-100 border-blue-300"
+                                                  ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
+                                                  : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
                                                 : isOwn
-                                                  ? "bg-blue-700 border-blue-600"
-                                                  : "bg-gray-100 border-gray-300"
+                                                  ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
+                                                  : "bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500"
                                             } hover:opacity-80`}
                                             onClick={() =>
                                               handleToggleReaction(m.id, emoji)
@@ -609,7 +629,7 @@ export default function Home() {
                                         className={`text-xs ${
                                           isOwn
                                             ? "text-blue-100"
-                                            : "text-gray-400"
+                                            : "text-gray-400 dark:text-gray-500"
                                         }`}
                                       >
                                         {formatTime(m.createdAt)}
@@ -625,11 +645,11 @@ export default function Home() {
                                         }
                                         title="Add reaction"
                                       />
-        </div>
+                                    </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
-                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
                                           onClick={() => {
                                             setEditingMessageId(m.id);
                                             setEditText(m.text);
@@ -639,7 +659,7 @@ export default function Home() {
                                           ✏️
                                         </button>
                                         <button
-                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700"
+                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
                                           onClick={() => handleDelete(m.id)}
                                           title="Delete"
                                         >
@@ -656,7 +676,7 @@ export default function Home() {
                       })}
                   </ul>
                   {Object.keys(typingUsers).length > 0 && (
-                    <div className="text-xs text-gray-500 italic mt-2 px-2">
+                    <div className="text-xs text-gray-500 dark:text-gray-400 italic mt-2 px-2">
                       {Object.values(typingUsers)
                         .map((u) => u.username)
                         .join(", ")}{" "}
@@ -669,7 +689,7 @@ export default function Home() {
             </div>
             <div className="flex gap-2">
               <input
-                className="border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 dark:border-gray-700 rounded px-3 py-2 w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="Type a message..."
                 value={text}
                 onChange={(e) => handleTextChange(e.target.value)}
@@ -681,7 +701,7 @@ export default function Home() {
                 }}
               />
               <button
-                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition-colors"
+                className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleSend}
                 disabled={!text.trim()}
               >
@@ -690,7 +710,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        </div>
+      </div>
     </div>
   );
 }
