@@ -15,10 +15,8 @@ export default function ThemeProvider({
     const root = document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
-      console.log("Dark mode enabled");
     } else {
       root.classList.remove("dark");
-      console.log("Light mode enabled");
     }
   }, [theme]);
 
