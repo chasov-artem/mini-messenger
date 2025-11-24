@@ -94,6 +94,7 @@ app.post('/messages', async (req, res) => {
       include: {
         author: true,
         reactions: { include: { user: true } },
+        reads: { include: { user: true } },
       },
     });
     // Broadcast only to clients joined to this conversation
@@ -117,6 +118,7 @@ app.get('/messages', async (req, res) => {
       include: {
         author: true,
         reactions: { include: { user: true } },
+        reads: { include: { user: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -144,6 +146,7 @@ app.patch('/messages/:id', async (req, res) => {
       include: {
         author: true,
         reactions: { include: { user: true } },
+        reads: { include: { user: true } },
       },
     });
     // Broadcast update to room
@@ -182,6 +185,54 @@ app.delete('/messages/:id', async (req, res) => {
   }
 });
 
+// Mark messages as read
+app.post('/messages/read', async (req, res) => {
+  try {
+    const { messageIds, userId } = req.body as {
+      messageIds?: string[];
+      userId?: string;
+    };
+    if (!userId || !Array.isArray(messageIds) || messageIds.length === 0) {
+      return res
+        .status(400)
+        .json({ error: 'userId and messageIds are required' });
+    }
+
+    await prisma.messageRead.createMany({
+      data: messageIds.map((id) => ({ messageId: id, userId })),
+      skipDuplicates: true,
+    });
+
+    const updatedMessages = await prisma.message.findMany({
+      where: { id: { in: messageIds } },
+      include: {
+        author: true,
+        reactions: { include: { user: true } },
+        reads: { include: { user: true } },
+      },
+    });
+
+    updatedMessages.forEach((message) => {
+      const payload = JSON.stringify({
+        type: 'message:read',
+        payload: { message },
+      });
+      wss.clients.forEach((client) => {
+        if ((client as any).readyState !== 1) return;
+        if ((client as any).roomId === message.conversationId) {
+          client.send(payload);
+        }
+      });
+    });
+
+    res.json({ success: true, messageIds });
+  } catch (e: any) {
+    res
+      .status(400)
+      .json({ error: e?.message ?? 'failed to mark messages as read' });
+  }
+});
+
 // Reactions
 app.post('/messages/:id/reactions', async (req, res) => {
   try {
@@ -206,6 +257,7 @@ app.post('/messages/:id/reactions', async (req, res) => {
         include: {
           author: true,
           reactions: { include: { user: true } },
+          reads: { include: { user: true } },
         },
       });
       // Broadcast reaction removal
@@ -228,6 +280,7 @@ app.post('/messages/:id/reactions', async (req, res) => {
         include: {
           author: true,
           reactions: { include: { user: true } },
+          reads: { include: { user: true } },
         },
       });
       // Broadcast reaction addition

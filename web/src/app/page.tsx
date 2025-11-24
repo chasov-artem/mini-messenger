@@ -15,6 +15,13 @@ type Reaction = {
   user?: { id: string; username: string };
 };
 
+type MessageRead = {
+  id: string;
+  userId: string;
+  readAt: string;
+  user?: { id: string; username: string };
+};
+
 type Message = {
   id: string;
   text: string;
@@ -23,6 +30,7 @@ type Message = {
   createdAt: string;
   author?: { id: string; username: string };
   reactions?: Reaction[];
+  reads?: MessageRead[];
 };
 
 type Conversation = {
@@ -60,7 +68,10 @@ export default function Home() {
     // initial history load
     fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
       .then((r) => r.json())
-      .then((data: Message[]) => setMessages(data))
+      .then((data: Message[]) => {
+        setMessages(data);
+        markMessagesAsRead(data);
+      })
       .catch(() => {});
     // load conversation members
     fetch(`${API_BASE}/conversations/${conversationId}/members`)
@@ -93,6 +104,9 @@ export default function Home() {
             if (prev.some((m) => m.id === incoming.id)) return prev;
             return [...prev, incoming];
           });
+          if (incoming.authorId !== user.id) {
+            markMessagesAsRead([incoming]);
+          }
         } else if (data?.type === "message:updated") {
           const updated = data.payload as Message;
           setMessages((prev) =>
@@ -114,6 +128,11 @@ export default function Home() {
           data?.type === "reaction:added" ||
           data?.type === "reaction:removed"
         ) {
+          const { message } = data.payload as { message: Message };
+          setMessages((prev) =>
+            prev.map((m) => (m.id === message.id ? message : m)),
+          );
+        } else if (data?.type === "message:read") {
           const { message } = data.payload as { message: Message };
           setMessages((prev) =>
             prev.map((m) => (m.id === message.id ? message : m)),
@@ -276,6 +295,23 @@ export default function Home() {
       });
     } catch {}
   }
+
+  const markMessagesAsRead = (messageList: Message[]) => {
+    if (!user.id || !conversationId) return;
+    const unreadIds = messageList
+      .filter((m) => m.authorId !== user.id)
+      .filter((m) => !(m.reads || []).some((r) => r.userId === user.id))
+      .map((m) => m.id);
+    if (unreadIds.length === 0) return;
+
+    fetch(`${API_BASE}/messages/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
+    }).catch(() => {
+      // ignore errors for now
+    });
+  };
 
   async function handleEdit(messageId: string) {
     if (!user.id || !editText.trim()) return;
@@ -503,8 +539,8 @@ export default function Home() {
               ) : (
                 <>
                   <ul className="space-y-3">
-                    {messages
-                      .filter((m) =>
+                  {messages
+                    .filter((m) =>
                         searchQuery
                           ? m.text
                               .toLowerCase()
@@ -514,6 +550,15 @@ export default function Home() {
                       .map((m) => {
                         const isOwn = m.authorId === user.id;
                         const isEditing = editingMessageId === m.id;
+                      const readers =
+                        m.reads?.filter((read) => read.userId !== m.authorId) ||
+                        [];
+                      const hasReadByOthers = readers.length > 0;
+                      const readByText = hasReadByOthers
+                        ? `Seen by ${readers
+                            .map((r) => r.user?.username ?? "Unknown")
+                            .join(", ")}`
+                        : "Not seen yet";
                         return (
                           <li
                             key={m.id}
@@ -631,6 +676,7 @@ export default function Home() {
                                     </div>
                                   )}
                                   <div className="flex items-center justify-between gap-2 mt-2">
+                                  <div className="flex flex-col items-start gap-1">
                                     <div className="flex items-center gap-2">
                                       <div
                                         className={`text-xs ${
@@ -653,6 +699,12 @@ export default function Home() {
                                         title="Add reaction"
                                       />
                                     </div>
+                                    {isOwn && (
+                                      <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                        {hasReadByOthers ? readByText : "Not seen yet"}
+                                      </div>
+                                    )}
+                                  </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button

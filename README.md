@@ -6,6 +6,7 @@ A real-time messaging application built with Next.js, TypeScript, Redux, Node.js
 
 - Real-time messaging via WebSocket
 - Multi-user chat rooms
+- Read receipts with typing indicators
 - User authentication with localStorage persistence
 - Conversation history
 - Modern UI with Tailwind CSS
