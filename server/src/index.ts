@@ -198,10 +198,13 @@ app.post('/messages/read', async (req, res) => {
         .json({ error: 'userId and messageIds are required' });
     }
 
-    await prisma.messageRead.createMany({
-      data: messageIds.map((id) => ({ messageId: id, userId })),
-      skipDuplicates: true,
-    });
+    for (const id of messageIds) {
+      await prisma.messageRead.upsert({
+        where: { messageId_userId: { messageId: id, userId } },
+        update: { readAt: new Date() },
+        create: { messageId: id, userId },
+      });
+    }
 
     const updatedMessages = await prisma.message.findMany({
       where: { id: { in: messageIds } },

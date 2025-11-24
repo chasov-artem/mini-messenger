@@ -20,6 +20,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.0",
     "@types/ws": "^8.18.1",
