@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { setUser, clearUser, toggleTheme } from "@/store";
@@ -147,7 +147,7 @@ export default function Home() {
       ws.close();
       wsRef.current = null;
     };
-  }, [conversationId, user.id]);
+  }, [conversationId, user.id, markMessagesAsRead]);
 
   // Best-effort: if socket is already open when conversationId changes, (re)send join
   useEffect(() => {
@@ -296,22 +296,25 @@ export default function Home() {
     } catch {}
   }
 
-  const markMessagesAsRead = (messageList: Message[]) => {
-    if (!user.id || !conversationId) return;
-    const unreadIds = messageList
-      .filter((m) => m.authorId !== user.id)
-      .filter((m) => !(m.reads || []).some((r) => r.userId === user.id))
-      .map((m) => m.id);
-    if (unreadIds.length === 0) return;
+  const markMessagesAsRead = useCallback(
+    (messageList: Message[]) => {
+      if (!user.id || !conversationId) return;
+      const unreadIds = messageList
+        .filter((m) => m.authorId !== user.id)
+        .filter((m) => !(m.reads || []).some((r) => r.userId === user.id))
+        .map((m) => m.id);
+      if (unreadIds.length === 0) return;
 
-    fetch(`${API_BASE}/messages/read`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
-    }).catch(() => {
-      // ignore errors for now
-    });
-  };
+      fetch(`${API_BASE}/messages/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
+      }).catch(() => {
+        // ignore errors for now
+      });
+    },
+    [user.id, conversationId],
+  );
 
   async function handleEdit(messageId: string) {
     if (!user.id || !editText.trim()) return;
@@ -539,8 +542,8 @@ export default function Home() {
               ) : (
                 <>
                   <ul className="space-y-3">
-                  {messages
-                    .filter((m) =>
+                    {messages
+                      .filter((m) =>
                         searchQuery
                           ? m.text
                               .toLowerCase()
@@ -550,15 +553,16 @@ export default function Home() {
                       .map((m) => {
                         const isOwn = m.authorId === user.id;
                         const isEditing = editingMessageId === m.id;
-                      const readers =
-                        m.reads?.filter((read) => read.userId !== m.authorId) ||
-                        [];
-                      const hasReadByOthers = readers.length > 0;
-                      const readByText = hasReadByOthers
-                        ? `Seen by ${readers
-                            .map((r) => r.user?.username ?? "Unknown")
-                            .join(", ")}`
-                        : "Not seen yet";
+                        const readers =
+                          m.reads?.filter(
+                            (read) => read.userId !== m.authorId,
+                          ) || [];
+                        const hasReadByOthers = readers.length > 0;
+                        const readByText = hasReadByOthers
+                          ? `Seen by ${readers
+                              .map((r) => r.user?.username ?? "Unknown")
+                              .join(", ")}`
+                          : "Not seen yet";
                         return (
                           <li
                             key={m.id}
@@ -676,35 +680,37 @@ export default function Home() {
                                     </div>
                                   )}
                                   <div className="flex items-center justify-between gap-2 mt-2">
-                                  <div className="flex flex-col items-start gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <div
-                                        className={`text-xs ${
-                                          isOwn
-                                            ? "text-blue-100"
-                                            : "text-gray-400 dark:text-gray-500"
-                                        }`}
-                                      >
-                                        {formatTime(m.createdAt)}
+                                    <div className="flex flex-col items-start gap-1">
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className={`text-xs ${
+                                            isOwn
+                                              ? "text-blue-100"
+                                              : "text-gray-400 dark:text-gray-500"
+                                          }`}
+                                        >
+                                          {formatTime(m.createdAt)}
+                                        </div>
+                                        <EmojiPickerButton
+                                          className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
+                                            isOwn
+                                              ? "text-blue-200"
+                                              : "text-gray-500"
+                                          }`}
+                                          onEmojiClick={(emoji) =>
+                                            handleToggleReaction(m.id, emoji)
+                                          }
+                                          title="Add reaction"
+                                        />
                                       </div>
-                                      <EmojiPickerButton
-                                        className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
-                                          isOwn
-                                            ? "text-blue-200"
-                                            : "text-gray-500"
-                                        }`}
-                                        onEmojiClick={(emoji) =>
-                                          handleToggleReaction(m.id, emoji)
-                                        }
-                                        title="Add reaction"
-                                      />
+                                      {isOwn && (
+                                        <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                          {hasReadByOthers
+                                            ? readByText
+                                            : "Not seen yet"}
+                                        </div>
+                                      )}
                                     </div>
-                                    {isOwn && (
-                                      <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                                        {hasReadByOthers ? readByText : "Not seen yet"}
-                                      </div>
-                                    )}
-                                  </div>
                                     {isOwn && (
                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
