@@ -28,9 +28,9 @@ model Conversation {
 
 model Message {
   id             String        @id @default(cuid())
-  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId String
-  author         User          @relation(fields: [authorId], references: [id])
+  author         User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId       String
   text           String
   createdAt      DateTime      @default(now())
@@ -40,9 +40,9 @@ model Message {
 
 model Membership {
   id             String        @id @default(cuid())
-  user           User          @relation(fields: [userId], references: [id])
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId         String
-  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   conversationId String
   role           String        @default("member")
   createdAt      DateTime      @default(now())
@@ -54,7 +54,7 @@ model Reaction {
   id        String   @id @default(cuid())
   message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   emoji     String
   createdAt DateTime @default(now())
@@ -66,7 +66,7 @@ model MessageRead {
   id        String   @id @default(cuid())
   message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   messageId String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   readAt    DateTime @default(now())
 

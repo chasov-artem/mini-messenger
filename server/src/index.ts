@@ -212,6 +212,43 @@ app.delete('/conversations/:id/members/:userId', async (req, res) => {
   }
 });
 
+// Delete conversation
+app.delete('/conversations/:id', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    
+    // Check if conversation exists
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    
+    if (!conversation) {
+      return res.status(404).json({ error: 'conversation not found' });
+    }
+    
+    // Delete conversation (cascade will delete messages, memberships, reactions, reads)
+    await prisma.conversation.delete({
+      where: { id: conversationId },
+    });
+    
+    // Broadcast deletion to all members
+    const payload = JSON.stringify({
+      type: 'conversation:deleted',
+      payload: { conversationId },
+    });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) {
+        client.send(payload);
+      }
+    });
+    
+    res.json({ success: true, conversationId });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to delete conversation' });
+  }
+});
+
 // Messages
 app.post('/messages', async (req, res) => {
   try {

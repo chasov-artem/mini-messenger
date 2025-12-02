@@ -227,6 +227,18 @@ export default function Home() {
           }
           // Reload conversations list
           if (user.id) void loadConversations();
+        } else if (data?.type === "conversation:deleted") {
+          const { conversationId: deletedId } = data.payload as {
+            conversationId: string;
+          };
+          // Remove from conversations list
+          setConversations((prev) => prev.filter((c) => c.id !== deletedId));
+          // If current conversation was deleted, close it
+          if (conversationId === deletedId) {
+            setConversationId(null);
+            setMessages([]);
+            setConversationMembers([]);
+          }
         }
       } catch {}
     };
@@ -449,11 +461,14 @@ export default function Home() {
 
   async function handleAddMember() {
     if (!conversationId || !newMemberUsername.trim()) return;
-    const res = await fetch(`${API_BASE}/conversations/${conversationId}/members`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: newMemberUsername.trim() }),
-    });
+    const res = await fetch(
+      `${API_BASE}/conversations/${conversationId}/members`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newMemberUsername.trim() }),
+      },
+    );
     if (res.ok) {
       setAddingMember(false);
       setNewMemberUsername("");
@@ -464,7 +479,11 @@ export default function Home() {
   }
 
   async function handleRemoveMember(memberId: string) {
-    if (!conversationId || !confirm("Remove this member from the conversation?")) return;
+    if (
+      !conversationId ||
+      !confirm("Remove this member from the conversation?")
+    )
+      return;
     const res = await fetch(
       `${API_BASE}/conversations/${conversationId}/members/${memberId}`,
       {
@@ -475,6 +494,32 @@ export default function Home() {
     if (!res.ok) {
       const data = await res.json();
       alert(data?.error ?? "Failed to remove member");
+    }
+  }
+
+  async function handleDeleteConversation(convId: string) {
+    if (
+      !confirm(
+        "Delete this conversation? All messages will be permanently deleted.",
+      )
+    )
+      return;
+    const res = await fetch(`${API_BASE}/conversations/${convId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      // If deleted conversation was the current one, close it
+      if (conversationId === convId) {
+        setConversationId(null);
+        setMessages([]);
+        setConversationMembers([]);
+      }
+      // Remove from conversations list
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+    } else {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to delete conversation");
     }
   }
 
@@ -582,25 +627,37 @@ export default function Home() {
                   </li>
                 ) : (
                   conversations.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        className={`px-3 py-2 w-full text-left text-sm ${
-                          conversationId === c.id
-                            ? "bg-zinc-100 dark:bg-gray-700 text-gray-900 dark:text-white"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                        }`}
-                        onClick={() => {
-                          setConversationId(c.id);
-                          setMessages([]);
-                          setOnlineUserIds(new Set());
-                          setConversationMembers([]);
-                        }}
-                      >
-                        {c.title}
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                          {c.id}
-                        </div>
-                      </button>
+                    <li key={c.id} className="group">
+                      <div className="flex items-center">
+                        <button
+                          className={`px-3 py-2 flex-1 text-left text-sm ${
+                            conversationId === c.id
+                              ? "bg-zinc-100 dark:bg-gray-700 text-gray-900 dark:text-white"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          }`}
+                          onClick={() => {
+                            setConversationId(c.id);
+                            setMessages([]);
+                            setOnlineUserIds(new Set());
+                            setConversationMembers([]);
+                          }}
+                        >
+                          {c.title}
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            {c.id}
+                          </div>
+                        </button>
+                        <button
+                          className="px-2 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteConversation(c.id);
+                          }}
+                          title="Delete conversation"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </li>
                   ))
                 )}
@@ -740,14 +797,15 @@ export default function Home() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      {conversations.find((c) => c.id === conversationId)?.title ||
-                        "Conversation"}
+                      {conversations.find((c) => c.id === conversationId)
+                        ?.title || "Conversation"}
                     </span>
                     <button
                       className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                       onClick={() => {
                         const currentTitle =
-                          conversations.find((c) => c.id === conversationId)?.title || "";
+                          conversations.find((c) => c.id === conversationId)
+                            ?.title || "";
                         setNewTitle(currentTitle);
                         setEditingTitle(true);
                       }}
@@ -756,7 +814,10 @@ export default function Home() {
                       ✏️
                     </button>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
-                      ID: <span className="font-mono select-all">{conversationId}</span>
+                      ID:{" "}
+                      <span className="font-mono select-all">
+                        {conversationId}
+                      </span>
                     </div>
                   </div>
                 )}
