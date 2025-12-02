@@ -60,6 +60,10 @@ export default function Home() {
   const [conversationMembers, setConversationMembers] = useState<
     Array<{ id: string; username: string }>
   >([]);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const [newMemberUsername, setNewMemberUsername] = useState("");
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -113,6 +117,24 @@ export default function Home() {
         setConversationMembers(data),
       )
       .catch(() => {});
+    // load conversation details to get title
+    if (user.id) {
+      fetch(`${API_BASE}/conversations?userId=${user.id}`)
+        .then((r) => r.json())
+        .then((data: Conversation[]) => {
+          const current = data.find((c) => c.id === conversationId);
+          if (current) {
+            setConversations((prev) => {
+              const exists = prev.some((c) => c.id === current.id);
+              if (exists) {
+                return prev.map((c) => (c.id === current.id ? current : c));
+              }
+              return [...prev, current];
+            });
+          }
+        })
+        .catch(() => {});
+    }
 
     const wsUrl =
       process.env.NEXT_PUBLIC_WS_URL ||
@@ -180,6 +202,31 @@ export default function Home() {
         } else if (data?.type === "users:online") {
           const { userIds } = data.payload as { userIds: string[] };
           setOnlineUserIds(new Set(userIds));
+        } else if (data?.type === "conversation:updated") {
+          const updated = data.payload as Conversation;
+          setConversations((prev) =>
+            prev.map((c) => (c.id === updated.id ? updated : c)),
+          );
+        } else if (data?.type === "conversation:member-added") {
+          const { members } = data.payload as {
+            members: Array<{ id: string; username: string }>;
+          };
+          setConversationMembers(members);
+          // Reload conversations list to show updated member count
+          if (user.id) void loadConversations();
+        } else if (data?.type === "conversation:member-removed") {
+          const { members, userId: removedUserId } = data.payload as {
+            members: Array<{ id: string; username: string }>;
+            userId: string;
+          };
+          setConversationMembers(members);
+          // If current user was removed, close the conversation
+          if (removedUserId === user.id) {
+            setConversationId(null);
+            setMessages([]);
+          }
+          // Reload conversations list
+          if (user.id) void loadConversations();
         }
       } catch {}
     };
@@ -384,6 +431,53 @@ export default function Home() {
     });
   }
 
+  async function handleUpdateTitle() {
+    if (!conversationId || !newTitle.trim()) return;
+    const res = await fetch(`${API_BASE}/conversations/${conversationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle.trim() }),
+    });
+    if (res.ok) {
+      setEditingTitle(false);
+      setNewTitle("");
+    } else {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to update title");
+    }
+  }
+
+  async function handleAddMember() {
+    if (!conversationId || !newMemberUsername.trim()) return;
+    const res = await fetch(`${API_BASE}/conversations/${conversationId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: newMemberUsername.trim() }),
+    });
+    if (res.ok) {
+      setAddingMember(false);
+      setNewMemberUsername("");
+    } else {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to add member");
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    if (!conversationId || !confirm("Remove this member from the conversation?")) return;
+    const res = await fetch(
+      `${API_BASE}/conversations/${conversationId}/members/${memberId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to remove member");
+    }
+  }
+
   function formatTime(dateString: string) {
     const date = new Date(dateString);
     return date.toLocaleTimeString("en-US", {
@@ -512,37 +606,94 @@ export default function Home() {
                 )}
               </ul>
             </div>
-            {conversationId && conversationMembers.length > 0 && (
+            {conversationId && (
               <div className="border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
-                <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                  Members ({conversationMembers.length})
+                <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 flex items-center justify-between">
+                  <span>Members ({conversationMembers.length})</span>
+                  <button
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    onClick={() => setAddingMember(true)}
+                  >
+                    + Add
+                  </button>
                 </div>
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {conversationMembers.map((member) => {
-                    const isOnline = onlineUserIds.has(member.id);
-                    return (
-                      <li
-                        key={member.id}
-                        className="px-3 py-2 text-sm flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                {addingMember && (
+                  <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        className="border rounded px-2 py-1 text-sm flex-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                        placeholder="Enter username..."
+                        value={newMemberUsername}
+                        onChange={(e) => setNewMemberUsername(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddMember();
+                          } else if (e.key === "Escape") {
+                            setAddingMember(false);
+                            setNewMemberUsername("");
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        className="text-xs px-2 py-1 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                        onClick={handleAddMember}
                       >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            isOnline
-                              ? "bg-green-500"
-                              : "bg-gray-300 dark:bg-gray-600"
-                          }`}
-                          title={isOnline ? "Online" : "Offline"}
-                        />
-                        <span>{member.username}</span>
-                        {member.id === user.id && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
-                            (You)
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                        Add
+                      </button>
+                      <button
+                        className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
+                        onClick={() => {
+                          setAddingMember(false);
+                          setNewMemberUsername("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {conversationMembers.length > 0 && (
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {conversationMembers.map((member) => {
+                      const isOnline = onlineUserIds.has(member.id);
+                      const isOwn = member.id === user.id;
+                      return (
+                        <li
+                          key={member.id}
+                          className="px-3 py-2 text-sm flex items-center justify-between group"
+                        >
+                          <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                isOnline
+                                  ? "bg-green-500"
+                                  : "bg-gray-300 dark:bg-gray-600"
+                              }`}
+                              title={isOnline ? "Online" : "Offline"}
+                            />
+                            <span>{member.username}</span>
+                            {isOwn && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
+                                (You)
+                              </span>
+                            )}
+                          </div>
+                          {!isOwn && (
+                            <button
+                              className="text-xs text-red-600 dark:text-red-400 hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => handleRemoveMember(member.id)}
+                              title="Remove member"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
             )}
           </aside>
@@ -550,10 +701,65 @@ export default function Home() {
 
         {user.id && conversationId && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                Conversation ID:{" "}
-                <span className="font-mono select-all">{conversationId}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1">
+                {editingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      className="border rounded px-2 py-1 text-sm flex-1 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Conversation title..."
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleUpdateTitle();
+                        } else if (e.key === "Escape") {
+                          setEditingTitle(false);
+                          setNewTitle("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      className="text-xs px-2 py-1 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                      onClick={handleUpdateTitle}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
+                      onClick={() => {
+                        setEditingTitle(false);
+                        setNewTitle("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                      {conversations.find((c) => c.id === conversationId)?.title ||
+                        "Conversation"}
+                    </span>
+                    <button
+                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                      onClick={() => {
+                        const currentTitle =
+                          conversations.find((c) => c.id === conversationId)?.title || "";
+                        setNewTitle(currentTitle);
+                        setEditingTitle(true);
+                      }}
+                      title="Edit title"
+                    >
+                      ✏️
+                    </button>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      ID: <span className="font-mono select-all">{conversationId}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <input
                 type="text"

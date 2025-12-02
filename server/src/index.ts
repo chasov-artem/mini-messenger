@@ -78,6 +78,140 @@ app.get('/conversations/:id/members', async (req, res) => {
   }
 });
 
+// Update conversation title
+app.patch('/conversations/:id', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const { title } = req.body as { title?: string };
+    if (!title || title.trim() === '') {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    const updated = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { title: title.trim() },
+    });
+    // Broadcast update to all members
+    const payload = JSON.stringify({ type: 'conversation:updated', payload: updated });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) {
+        client.send(payload);
+      }
+    });
+    res.json(updated);
+  } catch (e: any) {
+    if (e?.code === 'P2025') {
+      return res.status(404).json({ error: 'conversation not found' });
+    }
+    res.status(400).json({ error: e?.message ?? 'failed to update conversation' });
+  }
+});
+
+// Add member to conversation
+app.post('/conversations/:id/members', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const { userId, username } = req.body as { userId?: string; username?: string };
+    
+    let targetUserId = userId;
+    
+    // If username provided, find user by username
+    if (!targetUserId && username) {
+      const user = await prisma.user.findUnique({ where: { username } });
+      if (!user) {
+        return res.status(404).json({ error: 'user not found' });
+      }
+      targetUserId = user.id;
+    }
+    
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'userId or username is required' });
+    }
+    
+    // Check if user is already a member
+    const existing = await prisma.membership.findUnique({
+      where: { userId_conversationId: { userId: targetUserId, conversationId } },
+    });
+    
+    if (existing) {
+      return res.status(400).json({ error: 'user is already a member' });
+    }
+    
+    // Add membership
+    await prisma.membership.create({
+      data: { userId: targetUserId, conversationId },
+    });
+    
+    // Get updated member list
+    const memberships = await prisma.membership.findMany({
+      where: { conversationId },
+      include: { user: true },
+    });
+    const members = memberships.map((m) => m.user);
+    
+    // Broadcast to all members
+    const payload = JSON.stringify({
+      type: 'conversation:member-added',
+      payload: { conversationId, user: members.find((m) => m.id === targetUserId), members },
+    });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) {
+        client.send(payload);
+      }
+    });
+    
+    res.status(201).json({ success: true, members });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to add member' });
+  }
+});
+
+// Remove member from conversation
+app.delete('/conversations/:id/members/:userId', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const userId = req.params.userId;
+    
+    // Check if membership exists
+    const membership = await prisma.membership.findUnique({
+      where: { userId_conversationId: { userId, conversationId } },
+    });
+    
+    if (!membership) {
+      return res.status(404).json({ error: 'membership not found' });
+    }
+    
+    // Remove membership
+    await prisma.membership.delete({
+      where: { userId_conversationId: { userId, conversationId } },
+    });
+    
+    // Get updated member list
+    const memberships = await prisma.membership.findMany({
+      where: { conversationId },
+      include: { user: true },
+    });
+    const members = memberships.map((m) => m.user);
+    
+    // Broadcast to all members
+    const payload = JSON.stringify({
+      type: 'conversation:member-removed',
+      payload: { conversationId, userId, members },
+    });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) {
+        client.send(payload);
+      }
+    });
+    
+    res.json({ success: true, members });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to remove member' });
+  }
+});
+
 // Messages
 app.post('/messages', async (req, res) => {
   try {
