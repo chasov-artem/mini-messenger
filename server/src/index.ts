@@ -8,7 +8,12 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const prisma = new PrismaClient();
 
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: true, // Allow all origins (for now)
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.get('/health', (_req, res) => {

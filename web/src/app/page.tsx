@@ -8,6 +8,15 @@ import EmojiPickerButton from "@/components/EmojiPickerButton";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
+// Debug: log API_BASE in browser console
+if (typeof window !== "undefined") {
+  console.log("🔍 API_BASE:", API_BASE);
+  console.log("🔍 NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
+  if (!process.env.NEXT_PUBLIC_API_URL) {
+    console.warn("⚠️ NEXT_PUBLIC_API_URL не встановлено! Використовується fallback:", API_BASE);
+  }
+}
+
 type Reaction = {
   id: string;
   emoji: string;
