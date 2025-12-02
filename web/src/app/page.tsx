@@ -63,16 +63,57 @@ export default function Home() {
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const markMessagesAsRead = useCallback(
+    (messageList: Message[]) => {
+      if (!user.id || !conversationId) return;
+      const unreadIds = messageList
+        .filter((m) => m.authorId !== user.id)
+        .filter((m) => !(m.reads || []).some((r) => r.userId === user.id))
+        .map((m) => m.id);
+      if (unreadIds.length === 0) return;
+
+      fetch(`${API_BASE}/messages/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
+      }).catch(() => {
+        // ignore errors for now
+      });
+    },
+    [user.id, conversationId],
+  );
+
   useEffect(() => {
     if (!conversationId) return;
     // initial history load
+    console.log("Loading messages for conversation:", conversationId);
     fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
-      .then((r) => r.json())
-      .then((data: Message[]) => {
-        setMessages(data);
-        markMessagesAsRead(data);
+      .then((r) => {
+        console.log("Messages API response status:", r.status);
+        if (!r.ok) {
+          console.error("Messages API error:", r.status, r.statusText);
+          return r.json().then((err) => {
+            console.error("Messages API error body:", err);
+            throw new Error(err?.error || "Failed to load messages");
+          });
+        }
+        return r.json();
       })
-      .catch(() => {});
+      .then((data: Message[]) => {
+        console.log("Messages API response data:", data);
+        if (Array.isArray(data)) {
+          console.log("Setting messages:", data.length, "messages");
+          setMessages(data);
+          markMessagesAsRead(data);
+        } else {
+          console.warn("Messages API returned non-array:", data);
+          setMessages([]);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load messages:", err);
+        setMessages([]);
+      });
     // load conversation members
     fetch(`${API_BASE}/conversations/${conversationId}/members`)
       .then((r) => r.json())
@@ -101,6 +142,7 @@ export default function Home() {
         if (data?.type === "message:new") {
           const incoming = data.payload as Message;
           setMessages((prev) => {
+            if (!Array.isArray(prev)) return [incoming];
             if (prev.some((m) => m.id === incoming.id)) return prev;
             return [...prev, incoming];
           });
@@ -109,12 +151,16 @@ export default function Home() {
           }
         } else if (data?.type === "message:updated") {
           const updated = data.payload as Message;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === updated.id ? updated : m)),
-          );
+          setMessages((prev) => {
+            if (!Array.isArray(prev)) return [updated];
+            return prev.map((m) => (m.id === updated.id ? updated : m));
+          });
         } else if (data?.type === "message:deleted") {
           const { id } = data.payload as { id: string };
-          setMessages((prev) => prev.filter((m) => m.id !== id));
+          setMessages((prev) => {
+            if (!Array.isArray(prev)) return [];
+            return prev.filter((m) => m.id !== id);
+          });
         } else if (data?.type === "typing") {
           const { userId, username } = data.payload as {
             userId: string;
@@ -129,14 +175,16 @@ export default function Home() {
           data?.type === "reaction:removed"
         ) {
           const { message } = data.payload as { message: Message };
-          setMessages((prev) =>
-            prev.map((m) => (m.id === message.id ? message : m)),
-          );
+          setMessages((prev) => {
+            if (!Array.isArray(prev)) return [message];
+            return prev.map((m) => (m.id === message.id ? message : m));
+          });
         } else if (data?.type === "message:read") {
           const { message } = data.payload as { message: Message };
-          setMessages((prev) =>
-            prev.map((m) => (m.id === message.id ? message : m)),
-          );
+          setMessages((prev) => {
+            if (!Array.isArray(prev)) return [message];
+            return prev.map((m) => (m.id === message.id ? message : m));
+          });
         } else if (data?.type === "users:online") {
           const { userIds } = data.payload as { userIds: string[] };
           setOnlineUserIds(new Set(userIds));
@@ -281,40 +329,38 @@ export default function Home() {
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
     const body = { conversationId, authorId: user.id, text: text.trim() };
+    console.log("Sending message:", body);
     setText("");
     const res = await fetch(`${API_BASE}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    console.log("Send message response status:", res.status);
     try {
       const created = (await res.json()) as Message;
+      console.log("Send message response data:", created);
+      if (!created || typeof created !== "object" || !("id" in created)) {
+        console.warn("Invalid message response:", created);
+        return;
+      }
       setMessages((prev) => {
-        if (prev.some((m) => m.id === created.id)) return prev;
+        if (!Array.isArray(prev)) {
+          console.log("prev is not array, returning [created]");
+          return [created];
+        }
+        if (prev.some((m) => m.id === created.id)) {
+          console.log("Message already exists, skipping");
+          return prev;
+        }
+        console.log("Adding message to state, prev length:", prev.length);
         return [...prev, created];
       });
-    } catch {}
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      // WebSocket все одно може доставити повідомлення
+    }
   }
-
-  const markMessagesAsRead = useCallback(
-    (messageList: Message[]) => {
-      if (!user.id || !conversationId) return;
-      const unreadIds = messageList
-        .filter((m) => m.authorId !== user.id)
-        .filter((m) => !(m.reads || []).some((r) => r.userId === user.id))
-        .map((m) => m.id);
-      if (unreadIds.length === 0) return;
-
-      fetch(`${API_BASE}/messages/read`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
-      }).catch(() => {
-        // ignore errors for now
-      });
-    },
-    [user.id, conversationId],
-  );
 
   async function handleEdit(messageId: string) {
     if (!user.id || !editText.trim()) return;
@@ -535,14 +581,17 @@ export default function Home() {
               />
             </div>
             <div className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800">
-              {messages.length === 0 ? (
-                <div className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
-                  No messages yet. Start the conversation!
-                </div>
-              ) : (
-                <>
-                  <ul className="space-y-3">
-                    {messages
+              {(() => {
+                const messagesArray = Array.isArray(messages) ? messages : [];
+                console.log("Rendering messages:", messagesArray.length, "messages", messagesArray);
+                return messagesArray.length === 0 ? (
+                  <div className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
+                    No messages yet. Start the conversation!
+                  </div>
+                ) : (
+                  <>
+                    <ul className="space-y-3">
+                      {messagesArray
                       .filter((m) =>
                         searchQuery
                           ? m.text
@@ -750,7 +799,8 @@ export default function Home() {
                     </div>
                   )}
                 </>
-              )}
+              );
+            })()}
             </div>
             <div className="flex gap-2">
               <input
