@@ -86,32 +86,24 @@ export default function Home() {
   useEffect(() => {
     if (!conversationId) return;
     // initial history load
-    console.log("Loading messages for conversation:", conversationId);
     fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
       .then((r) => {
-        console.log("Messages API response status:", r.status);
         if (!r.ok) {
-          console.error("Messages API error:", r.status, r.statusText);
           return r.json().then((err) => {
-            console.error("Messages API error body:", err);
             throw new Error(err?.error || "Failed to load messages");
           });
         }
         return r.json();
       })
       .then((data: Message[]) => {
-        console.log("Messages API response data:", data);
         if (Array.isArray(data)) {
-          console.log("Setting messages:", data.length, "messages");
           setMessages(data);
           markMessagesAsRead(data);
         } else {
-          console.warn("Messages API returned non-array:", data);
           setMessages([]);
         }
       })
-      .catch((err) => {
-        console.error("Failed to load messages:", err);
+      .catch(() => {
         setMessages([]);
       });
     // load conversation members
@@ -329,35 +321,27 @@ export default function Home() {
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
     const body = { conversationId, authorId: user.id, text: text.trim() };
-    console.log("Sending message:", body);
     setText("");
     const res = await fetch(`${API_BASE}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    console.log("Send message response status:", res.status);
     try {
       const created = (await res.json()) as Message;
-      console.log("Send message response data:", created);
       if (!created || typeof created !== "object" || !("id" in created)) {
-        console.warn("Invalid message response:", created);
         return;
       }
       setMessages((prev) => {
         if (!Array.isArray(prev)) {
-          console.log("prev is not array, returning [created]");
           return [created];
         }
         if (prev.some((m) => m.id === created.id)) {
-          console.log("Message already exists, skipping");
           return prev;
         }
-        console.log("Adding message to state, prev length:", prev.length);
         return [...prev, created];
       });
-    } catch (err) {
-      console.error("Failed to send message:", err);
+    } catch {
       // WebSocket все одно може доставити повідомлення
     }
   }
@@ -419,7 +403,6 @@ export default function Home() {
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             onClick={() => {
               dispatch(toggleTheme());
-              console.log("Theme toggled, current theme:", theme);
             }}
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
@@ -583,7 +566,6 @@ export default function Home() {
             <div className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800">
               {(() => {
                 const messagesArray = Array.isArray(messages) ? messages : [];
-                console.log("Rendering messages:", messagesArray.length, "messages", messagesArray);
                 return messagesArray.length === 0 ? (
                   <div className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
                     No messages yet. Start the conversation!
@@ -592,229 +574,244 @@ export default function Home() {
                   <>
                     <ul className="space-y-3">
                       {messagesArray
-                      .filter((m) =>
-                        searchQuery
-                          ? m.text
-                              .toLowerCase()
-                              .includes(searchQuery.toLowerCase())
-                          : true,
-                      )
-                      .map((m) => {
-                        const isOwn = m.authorId === user.id;
-                        const isEditing = editingMessageId === m.id;
-                        const readers =
-                          m.reads?.filter(
-                            (read) => read.userId !== m.authorId,
-                          ) || [];
-                        const hasReadByOthers = readers.length > 0;
-                        const readByText = hasReadByOthers
-                          ? `Seen by ${readers
-                              .map((r) => r.user?.username ?? "Unknown")
-                              .join(", ")}`
-                          : "Not seen yet";
-                        return (
-                          <li
-                            key={m.id}
-                            className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
-                          >
-                            <div
-                              className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
-                                isOwn
-                                  ? "bg-blue-600 dark:bg-blue-500 text-white"
-                                  : "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                              }`}
+                        .filter((m) =>
+                          searchQuery
+                            ? m.text
+                                .toLowerCase()
+                                .includes(searchQuery.toLowerCase())
+                            : true,
+                        )
+                        .map((m) => {
+                          const isOwn = m.authorId === user.id;
+                          const isEditing = editingMessageId === m.id;
+                          const readers =
+                            m.reads?.filter(
+                              (read) => read.userId !== m.authorId,
+                            ) || [];
+                          const hasReadByOthers = readers.length > 0;
+                          const readByText = hasReadByOthers
+                            ? `Seen by ${readers
+                                .map((r) => r.user?.username ?? "Unknown")
+                                .join(", ")}`
+                            : "Not seen yet";
+                          return (
+                            <li
+                              key={m.id}
+                              className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
                             >
-                              {!isOwn && (
-                                <div
-                                  className={`text-xs font-semibold mb-1 flex items-center gap-1 ${
-                                    isOwn
-                                      ? "text-blue-100"
-                                      : "text-gray-600 dark:text-gray-300"
-                                  }`}
-                                >
-                                  {m.author?.username ?? m.authorId}
-                                  {m.authorId &&
-                                    onlineUserIds.has(m.authorId) && (
-                                      <span
-                                        className="w-2 h-2 bg-green-500 rounded-full"
-                                        title="Online"
-                                      />
-                                    )}
-                                </div>
-                              )}
-                              {isEditing ? (
-                                <div className="space-y-2">
-                                  <input
-                                    className="w-full px-2 py-1 rounded text-gray-900 dark:text-white bg-white dark:bg-gray-600 text-sm border border-gray-300 dark:border-gray-500"
-                                    value={editText}
-                                    onChange={(e) =>
-                                      setEditText(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter" && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleEdit(m.id);
-                                      }
-                                      if (e.key === "Escape") {
-                                        setEditingMessageId(null);
-                                        setEditText("");
-                                      }
-                                    }}
-                                    autoFocus
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
-                                      onClick={() => handleEdit(m.id)}
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-500 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-400"
-                                      onClick={() => {
-                                        setEditingMessageId(null);
-                                        setEditText("");
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
+                              <div
+                                className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
+                                  isOwn
+                                    ? "bg-blue-600 dark:bg-blue-500 text-white"
+                                    : "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                                }`}
+                              >
+                                {!isOwn && (
+                                  <div
+                                    className={`text-xs font-semibold mb-1 flex items-center gap-1 ${
+                                      isOwn
+                                        ? "text-blue-100"
+                                        : "text-gray-600 dark:text-gray-300"
+                                    }`}
+                                  >
+                                    {m.author?.username ?? m.authorId}
+                                    {m.authorId &&
+                                      onlineUserIds.has(m.authorId) && (
+                                        <span
+                                          className="w-2 h-2 bg-green-500 rounded-full"
+                                          title="Online"
+                                        />
+                                      )}
                                   </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="text-sm">{m.text}</div>
-                                  {m.reactions && m.reactions.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                      {Object.entries(
-                                        m.reactions.reduce(
-                                          (acc, r) => {
-                                            if (!acc[r.emoji]) {
-                                              acc[r.emoji] = [];
-                                            }
-                                            acc[r.emoji].push(r);
-                                            return acc;
-                                          },
-                                          {} as Record<string, Reaction[]>,
-                                        ),
-                                      ).map(([emoji, reactions]) => {
-                                        const hasUserReaction = reactions.some(
-                                          (r) => r.userId === user.id,
-                                        );
-                                        return (
-                                          <button
-                                            key={emoji}
-                                            className={`text-xs px-2 py-1 rounded border ${
-                                              hasUserReaction
-                                                ? isOwn
-                                                  ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
-                                                  : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
-                                                : isOwn
-                                                  ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
-                                                  : "bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500"
-                                            } hover:opacity-80`}
-                                            onClick={() =>
+                                )}
+                                {isEditing ? (
+                                  <div className="space-y-2">
+                                    <input
+                                      className="w-full px-2 py-1 rounded text-gray-900 dark:text-white bg-white dark:bg-gray-600 text-sm border border-gray-300 dark:border-gray-500"
+                                      value={editText}
+                                      onChange={(e) =>
+                                        setEditText(e.target.value)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleEdit(m.id);
+                                        }
+                                        if (e.key === "Escape") {
+                                          setEditingMessageId(null);
+                                          setEditText("");
+                                        }
+                                      }}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
+                                        onClick={() => handleEdit(m.id)}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-500 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-400"
+                                        onClick={() => {
+                                          setEditingMessageId(null);
+                                          setEditText("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="text-sm">{m.text}</div>
+                                    {m.reactions && m.reactions.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {Object.entries(
+                                          m.reactions.reduce(
+                                            (acc, r) => {
+                                              if (!acc[r.emoji]) {
+                                                acc[r.emoji] = [];
+                                              }
+                                              acc[r.emoji].push(r);
+                                              return acc;
+                                            },
+                                            {} as Record<string, Reaction[]>,
+                                          ),
+                                        ).map(([emoji, reactions]) => {
+                                          const hasUserReaction =
+                                            reactions.some(
+                                              (r) => r.userId === user.id,
+                                            );
+                                          return (
+                                            <button
+                                              key={emoji}
+                                              className={`text-xs px-2 py-1 rounded border ${
+                                                hasUserReaction
+                                                  ? isOwn
+                                                    ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
+                                                    : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
+                                                  : isOwn
+                                                    ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
+                                                    : "bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500"
+                                              } hover:opacity-80`}
+                                              onClick={() =>
+                                                handleToggleReaction(
+                                                  m.id,
+                                                  emoji,
+                                                )
+                                              }
+                                              title={reactions
+                                                .map(
+                                                  (r) =>
+                                                    r.user?.username ??
+                                                    r.userId,
+                                                )
+                                                .join(", ")}
+                                            >
+                                              {emoji} {reactions.length}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center justify-between gap-2 mt-2">
+                                      <div className="flex flex-col items-start gap-1">
+                                        <div className="flex items-center gap-2">
+                                          <div
+                                            className={`text-xs ${
+                                              isOwn
+                                                ? "text-blue-100"
+                                                : "text-gray-400 dark:text-gray-500"
+                                            }`}
+                                          >
+                                            {formatTime(m.createdAt)}
+                                          </div>
+                                          <EmojiPickerButton
+                                            className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
+                                              isOwn
+                                                ? "text-blue-200"
+                                                : "text-gray-500"
+                                            }`}
+                                            onEmojiClick={(emoji) =>
                                               handleToggleReaction(m.id, emoji)
                                             }
-                                            title={reactions
-                                              .map(
-                                                (r) =>
-                                                  r.user?.username ?? r.userId,
-                                              )
-                                              .join(", ")}
-                                          >
-                                            {emoji} {reactions.length}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center justify-between gap-2 mt-2">
-                                    <div className="flex flex-col items-start gap-1">
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className={`text-xs ${
-                                            isOwn
-                                              ? "text-blue-100"
-                                              : "text-gray-400 dark:text-gray-500"
-                                          }`}
-                                        >
-                                          {formatTime(m.createdAt)}
+                                            title="Add reaction"
+                                          />
                                         </div>
-                                        <EmojiPickerButton
-                                          className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
-                                            isOwn
-                                              ? "text-blue-200"
-                                              : "text-gray-500"
-                                          }`}
-                                          onEmojiClick={(emoji) =>
-                                            handleToggleReaction(m.id, emoji)
-                                          }
-                                          title="Add reaction"
-                                        />
+                                        {isOwn && (
+                                          <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                            {hasReadByOthers
+                                              ? readByText
+                                              : "Not seen yet"}
+                                          </div>
+                                        )}
                                       </div>
                                       {isOwn && (
-                                        <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                                          {hasReadByOthers
-                                            ? readByText
-                                            : "Not seen yet"}
+                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                                            onClick={() => {
+                                              setEditingMessageId(m.id);
+                                              setEditText(m.text);
+                                            }}
+                                            title="Edit"
+                                          >
+                                            ✏️
+                                          </button>
+                                          <button
+                                            className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                                            onClick={() => handleDelete(m.id)}
+                                            title="Delete"
+                                          >
+                                            🗑️
+                                          </button>
                                         </div>
                                       )}
                                     </div>
-                                    {isOwn && (
-                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-                                          onClick={() => {
-                                            setEditingMessageId(m.id);
-                                            setEditText(m.text);
-                                          }}
-                                          title="Edit"
-                                        >
-                                          ✏️
-                                        </button>
-                                        <button
-                                          className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-                                          onClick={() => handleDelete(m.id)}
-                                          title="Delete"
-                                        >
-                                          🗑️
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                  {Object.keys(typingUsers).length > 0 && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 italic mt-2 px-2">
-                      {Object.values(typingUsers)
-                        .map((u) => u.username)
-                        .join(", ")}{" "}
-                      {Object.keys(typingUsers).length === 1 ? "is" : "are"}{" "}
-                      typing...
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+                                  </>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                    {Object.keys(typingUsers).length > 0 && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 italic mt-2 px-2">
+                        {Object.values(typingUsers)
+                          .map((u) => u.username)
+                          .join(", ")}{" "}
+                        {Object.keys(typingUsers).length === 1 ? "is" : "are"}{" "}
+                        typing...
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
-            <div className="flex gap-2">
-              <input
-                className="border border-gray-300 dark:border-gray-700 rounded px-3 py-2 w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-                placeholder="Type a message..."
-                value={text}
-                onChange={(e) => handleTextChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-              />
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1 flex items-center gap-2">
+                <input
+                  className="border border-gray-300 dark:border-gray-700 rounded px-3 py-2 flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  placeholder="Type a message..."
+                  value={text}
+                  onChange={(e) => handleTextChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+                <EmojiPickerButton
+                  onEmojiClick={(emoji) => {
+                    setText((prev) => prev + emoji);
+                  }}
+                  className="text-xl hover:scale-110 transition-transform cursor-pointer"
+                  title="Add emoji"
+                  showQuickReactions={false}
+                />
+              </div>
               <button
                 className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleSend}
