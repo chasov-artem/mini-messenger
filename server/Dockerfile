@@ -21,12 +21,9 @@ COPY src ./src
 # Build TypeScript
 RUN npm run build
 
-# Run migrations
-RUN npx prisma migrate deploy || npx prisma db push
-
 # Expose port
 EXPOSE 4000
 
-# Start server
-CMD ["npm", "start"]
+# Start server (migrations run at startup)
+CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push && npm start"]
 
