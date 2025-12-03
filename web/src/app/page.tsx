@@ -943,12 +943,14 @@ export default function Home() {
                                 (You)
                               </span>
                             )}
-                            {isOnline && (
-                              <span
-                                className="w-1.5 h-1.5 bg-green-500 rounded-full"
-                                title="Online"
-                              />
-                            )}
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                isOnline
+                                  ? "bg-green-500 animate-pulse"
+                                  : "bg-gray-300 dark:bg-gray-600"
+                              }`}
+                              title={isOnline ? "Online" : "Offline"}
+                            />
                           </div>
                           {!isOwn && (
                             <button
@@ -1303,12 +1305,18 @@ export default function Home() {
                                       <span className="text-sm font-semibold text-gray-900 dark:text-white">
                                         {m.author?.username ?? m.authorId}
                                       </span>
-                                      {onlineUserIds.has(m.authorId) && (
-                                        <span
-                                          className="w-1.5 h-1.5 bg-green-500 rounded-full"
-                                          title="Online"
-                                        />
-                                      )}
+                                      <span
+                                        className={`w-2 h-2 rounded-full ${
+                                          onlineUserIds.has(m.authorId)
+                                            ? "bg-green-500"
+                                            : "bg-gray-300 dark:bg-gray-600"
+                                        }`}
+                                        title={
+                                          onlineUserIds.has(m.authorId)
+                                            ? "Online"
+                                            : "Offline"
+                                        }
+                                      />
                                       <span className="text-xs text-gray-500 dark:text-gray-400">
                                         {formatTime(m.createdAt)}
                                       </span>
@@ -1495,15 +1503,14 @@ export default function Home() {
               {/* Input Area */}
               <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#171717] px-6 py-4">
                 <div className="max-w-3xl mx-auto">
-                  <div className="flex gap-3 items-end">
+                  <div className="flex gap-3 items-center">
                     <div className="flex-1 relative">
                       <textarea
-                        className="w-full border rounded-xl px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
+                        className="w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
                         placeholder="Type a message..."
                         value={text}
                         onChange={(e) => {
                           handleTextChange(e.target.value);
-                          setText(e.target.value);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
@@ -1515,7 +1522,7 @@ export default function Home() {
                       />
                     </div>
                     <button
-                      className="px-6 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2.5 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed h-fit"
                       onClick={handleSend}
                       disabled={!text.trim()}
                     >

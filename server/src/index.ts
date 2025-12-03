@@ -654,6 +654,13 @@ wss.on('connection', (ws) => {
             onlineUsers.set(data.conversationId, new Set());
           }
           onlineUsers.get(data.conversationId)!.add(data.userId);
+          // Send current online users to the newly joined user
+          const currentOnline = Array.from(onlineUsers.get(data.conversationId) || []);
+          ws.send(JSON.stringify({ 
+            type: 'users:online', 
+            payload: { conversationId: data.conversationId, userIds: currentOnline } 
+          }));
+          // Broadcast updated list to all other users in the room
           broadcastOnlineUsers(data.conversationId);
         }
         ws.send(JSON.stringify({ type: 'joined', conversationId: data.conversationId }));
