@@ -49,6 +49,7 @@ type Conversation = {
   id: string;
   title: string;
   createdAt: string;
+  userRole?: string; // Role of current user in this conversation
 };
 
 export default function Home() {
@@ -70,12 +71,16 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [conversationMembers, setConversationMembers] = useState<
-    Array<{ id: string; username: string }>
+    Array<{ id: string; username: string; role?: string }>
   >([]);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [addingMember, setAddingMember] = useState(false);
   const [newMemberUsername, setNewMemberUsername] = useState("");
+  const [showJoinDialog, setShowJoinDialog] = useState(false);
+  const [joinDialogId, setJoinDialogId] = useState("");
+  const [copiedId, setCopiedId] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [messagesOffset, setMessagesOffset] = useState(0);
@@ -192,9 +197,19 @@ export default function Home() {
     // load conversation members
     fetch(`${API_BASE}/conversations/${conversationId}/members`)
       .then((r) => r.json())
-      .then((data: Array<{ id: string; username: string }>) =>
-        setConversationMembers(data),
-      )
+      .then((data: Array<{ id: string; username: string; role?: string }>) => {
+        setConversationMembers(data);
+        // Find current user's role
+        const currentUserMember = data.find((m) => m.id === user.id);
+        const role = currentUserMember?.role || null;
+        setUserRole(role);
+        // Update role in conversations list
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, userRole: role || undefined } : c
+          )
+        );
+      })
       .catch(() => {});
     // load conversation details to get title
     if (user.id) {
@@ -302,21 +317,57 @@ export default function Home() {
           );
         } else if (data?.type === "conversation:member-added") {
           const { members } = data.payload as {
-            members: Array<{ id: string; username: string }>;
+            members: Array<{ id: string; username: string; role?: string }>;
           };
           setConversationMembers(members);
+          // Update user role if current user
+          const currentUserMember = members.find((m) => m.id === user.id);
+          if (currentUserMember) {
+            setUserRole(currentUserMember.role || null);
+            // Update role in conversations list
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === conversationId
+                  ? { ...c, userRole: currentUserMember.role || undefined }
+                  : c
+              )
+            );
+          }
           // Reload conversations list to show updated member count
           if (user.id) void loadConversations();
         } else if (data?.type === "conversation:member-removed") {
           const { members, userId: removedUserId } = data.payload as {
-            members: Array<{ id: string; username: string }>;
+            members: Array<{ id: string; username: string; role?: string }>;
             userId: string;
           };
           setConversationMembers(members);
+          // Update user role if current user
+          const currentUserMember = members.find((m) => m.id === user.id);
+          setUserRole(currentUserMember?.role || null);
           // If current user was removed, close the conversation
           if (removedUserId === user.id) {
             setConversationId(null);
             setMessages([]);
+            setConversationMembers([]);
+            setUserRole(null);
+          }
+          // Reload conversations list
+          if (user.id) void loadConversations();
+        } else if (data?.type === "conversation:member-left") {
+          const { members, userId: leftUserId } = data.payload as {
+            members: Array<{ id: string; username: string; role?: string }>;
+            userId: string;
+          };
+          setConversationMembers(members);
+          // Update user role if current user
+          const currentUserMember = members.find((m) => m.id === user.id);
+          setUserRole(currentUserMember?.role || null);
+          // If current user left, close the conversation
+          if (leftUserId === user.id) {
+            setConversationId(null);
+            setMessages([]);
+            setConversationMembers([]);
+            setUserRole(null);
           }
           // Reload conversations list
           if (user.id) void loadConversations();
@@ -377,7 +428,11 @@ export default function Home() {
     const res = await fetch(`${API_BASE}/conversations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "General", memberUserIds: [user.id] }),
+      body: JSON.stringify({ 
+        title: "General", 
+        creatorId: user.id,
+        memberUserIds: [] 
+      }),
     });
     const data = await res.json();
     if (res.ok) {
@@ -390,6 +445,7 @@ export default function Home() {
           id: data.id as string,
           title: data.title as string,
           createdAt: data.createdAt as string,
+          userRole: "owner", // Creator is always owner
         },
         ...prev,
       ]);
@@ -604,6 +660,7 @@ export default function Home() {
     const res = await fetch(`${API_BASE}/conversations/${convId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
     });
     if (res.ok) {
       // If deleted conversation was the current one, close it
@@ -611,12 +668,41 @@ export default function Home() {
         setConversationId(null);
         setMessages([]);
         setConversationMembers([]);
+        setUserRole(null);
       }
       // Remove from conversations list
       setConversations((prev) => prev.filter((c) => c.id !== convId));
     } else {
       const data = await res.json();
       alert(data?.error ?? "Failed to delete conversation");
+    }
+  }
+
+  async function handleLeaveConversation(convId: string) {
+    if (
+      !confirm(
+        "Leave this conversation? You can rejoin later using the conversation ID.",
+      )
+    )
+      return;
+    const res = await fetch(`${API_BASE}/conversations/${convId}/leave`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
+    if (res.ok) {
+      // If left conversation was the current one, close it
+      if (conversationId === convId) {
+        setConversationId(null);
+        setMessages([]);
+        setConversationMembers([]);
+        setUserRole(null);
+      }
+      // Remove from conversations list
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+    } else {
+      const data = await res.json();
+      alert(data?.error ?? "Failed to leave conversation");
     }
   }
 
@@ -628,98 +714,105 @@ export default function Home() {
     });
   }
 
+  // Helper function to get initials for avatar
+  const getInitials = (username: string | null | undefined) => {
+    if (!username) return "?";
+    return username
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Helper function to get avatar color
+  const getAvatarColor = (username: string | null | undefined) => {
+    if (!username) return "bg-gray-500";
+    const colors = [
+      "bg-blue-500",
+      "bg-green-500",
+      "bg-purple-500",
+      "bg-pink-500",
+      "bg-indigo-500",
+      "bg-yellow-500",
+      "bg-red-500",
+      "bg-teal-500",
+    ];
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+      hash = username.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
   return (
-    <div className="min-h-screen p-6 sm:p-10 bg-white dark:bg-gray-900">
-      <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-[260px_1fr]">
-        <div className="flex items-center justify-between sm:col-span-2">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-            Mini Messenger
-          </h1>
-          <button
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            onClick={() => {
-              dispatch(toggleTheme());
-            }}
-            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-          >
-            {theme === "light" ? "🌙" : "☀️"}
-          </button>
-        </div>
-
-        {!user.id ? (
-          <div className="flex gap-2 sm:col-span-2">
-            <input
-              className="border rounded px-3 py-2 w-full bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-              placeholder="Enter username"
-              value={usernameInput}
-              onChange={(e) => setUsernameInput(e.target.value)}
-            />
+    <div className="min-h-screen flex bg-gray-50 dark:bg-[#0f0f0f]">
+      {/* Sidebar */}
+      {user.id && (
+        <aside className="w-64 bg-white dark:bg-[#171717] border-r border-gray-200 dark:border-gray-800 flex flex-col h-screen sticky top-0">
+          {/* Sidebar Header */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Mini Messenger
+            </h1>
             <button
-              className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-              onClick={handleCreateUser}
-            >
-              Continue
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between sm:col-span-2">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <span>Signed in as</span>
-              <span className="font-medium">{user.username}</span>
-            </div>
-            <button
-              className="text-xs text-red-600 dark:text-red-400 hover:underline"
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               onClick={() => {
-                dispatch(clearUser());
-                setConversationId(null);
-                setMessages([]);
-                setConversations([]);
-                wsRef.current?.close();
+                dispatch(toggleTheme());
               }}
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
             >
-              Logout
+              {theme === "light" ? "🌙" : "☀️"}
             </button>
           </div>
-        )}
 
-        {user.id && (
-          <aside className="space-y-3">
-            <div className="flex gap-2">
-              <button
-                className="bg-emerald-600 dark:bg-emerald-500 text-white px-3 py-2 rounded w-full hover:bg-emerald-700 dark:hover:bg-emerald-600"
-                onClick={handleCreateConversation}
+          {/* User Info */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-full ${getAvatarColor(
+                  user.username
+                )} flex items-center justify-center text-white text-xs font-semibold`}
               >
-                + New conversation
-              </button>
+                {getInitials(user.username)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {user.username}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Online
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <input
-                className="border rounded px-3 py-2 w-full bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                placeholder="Paste conversation ID"
-                value={joinId}
-                onChange={(e) => setJoinId(e.target.value)}
-              />
-              <button
-                className="bg-zinc-800 dark:bg-zinc-700 text-white px-3 py-2 rounded hover:bg-zinc-900 dark:hover:bg-zinc-600"
-                onClick={handleJoinConversation}
-              >
-                Join
-              </button>
-            </div>
-            <div className="border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
-              <div className="flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                <span>Conversations</span>
+          </div>
+
+          {/* Sidebar Content */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <button
+              className="w-full bg-gray-900 dark:bg-gray-800 text-white px-4 py-2.5 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+              onClick={handleCreateConversation}
+            >
+              <span>+</span>
+              <span>New conversation</span>
+            </button>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-2">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Conversations
+                </span>
                 <button
-                  className="text-xs underline hover:text-gray-900 dark:hover:text-gray-200"
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   onClick={() => loadConversations()}
                   disabled={isLoadingConversations}
                 >
-                  {isLoadingConversations ? "…" : "Refresh"}
+                  {isLoadingConversations ? "…" : "↻"}
                 </button>
               </div>
-              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+              <ul className="space-y-1">
                 {conversations.length === 0 ? (
-                  <li className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                  <li className="px-2 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">
                     No conversations
                   </li>
                 ) : (
@@ -727,10 +820,10 @@ export default function Home() {
                     <li key={c.id} className="group">
                       <div className="flex items-center">
                         <button
-                          className={`px-3 py-2 flex-1 text-left text-sm ${
+                          className={`px-3 py-2.5 flex-1 text-left text-sm rounded-lg transition-colors ${
                             conversationId === c.id
-                              ? "bg-zinc-100 dark:bg-gray-700 text-gray-900 dark:text-white"
-                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                              ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                           }`}
                           onClick={() => {
                             setConversationId(c.id);
@@ -739,31 +832,47 @@ export default function Home() {
                             setConversationMembers([]);
                           }}
                         >
-                          {c.title}
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                            {c.id}
+                          <div className="font-medium truncate">{c.title}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate mt-0.5">
+                            {c.id.slice(0, 8)}...
                           </div>
                         </button>
-                        <button
-                          className="px-2 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteConversation(c.id);
-                          }}
-                          title="Delete conversation"
-                        >
-                          🗑️
-                        </button>
+                        {c.userRole === "owner" ? (
+                          <button
+                            className="px-2 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConversation(c.id);
+                            }}
+                            title="Delete conversation"
+                          >
+                            🗑️
+                          </button>
+                        ) : (
+                          <button
+                            className="px-2 py-2 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLeaveConversation(c.id);
+                            }}
+                            title="Leave conversation"
+                          >
+                            🚪
+                          </button>
+                        )}
                       </div>
                     </li>
                   ))
                 )}
               </ul>
             </div>
+
             {conversationId && (
-              <div className="border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800">
-                <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 flex items-center justify-between">
-                  <span>Members ({conversationMembers.length})</span>
+              <div className="space-y-2 pt-4 border-t border-gray-200 dark:border-gray-800">
+                <div className="flex items-center justify-between px-2">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    Members
+                  </span>
                   <button
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                     onClick={() => setAddingMember(true)}
@@ -772,32 +881,32 @@ export default function Home() {
                   </button>
                 </div>
                 {addingMember && (
-                  <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        className="border rounded px-2 py-1 text-sm flex-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                        placeholder="Enter username..."
-                        value={newMemberUsername}
-                        onChange={(e) => setNewMemberUsername(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleAddMember();
-                          } else if (e.key === "Escape") {
-                            setAddingMember(false);
-                            setNewMemberUsername("");
-                          }
-                        }}
-                        autoFocus
-                      />
+                  <div className="px-2 py-2 space-y-2">
+                    <input
+                      type="text"
+                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter username..."
+                      value={newMemberUsername}
+                      onChange={(e) => setNewMemberUsername(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleAddMember();
+                        } else if (e.key === "Escape") {
+                          setAddingMember(false);
+                          setNewMemberUsername("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
                       <button
-                        className="text-xs px-2 py-1 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                        className="flex-1 text-xs px-3 py-1.5 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
                         onClick={handleAddMember}
                       >
                         Add
                       </button>
                       <button
-                        className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
+                        className="flex-1 text-xs px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
                         onClick={() => {
                           setAddingMember(false);
                           setNewMemberUsername("");
@@ -809,29 +918,34 @@ export default function Home() {
                   </div>
                 )}
                 {conversationMembers.length > 0 && (
-                  <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                  <ul className="space-y-1">
                     {conversationMembers.map((member) => {
                       const isOnline = onlineUserIds.has(member.id);
                       const isOwn = member.id === user.id;
                       return (
                         <li
                           key={member.id}
-                          className="px-3 py-2 text-sm flex items-center justify-between group"
+                          className="px-3 py-2 text-sm flex items-center justify-between group rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
                         >
                           <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                isOnline
-                                  ? "bg-green-500"
-                                  : "bg-gray-300 dark:bg-gray-600"
-                              }`}
-                              title={isOnline ? "Online" : "Offline"}
-                            />
-                            <span>{member.username}</span>
+                            <div
+                              className={`w-6 h-6 rounded-full ${getAvatarColor(
+                                member.username
+                              )} flex items-center justify-center text-white text-xs font-semibold`}
+                            >
+                              {getInitials(member.username)}
+                            </div>
+                            <span className="font-medium">{member.username}</span>
                             {isOwn && (
                               <span className="text-xs text-gray-400 dark:text-gray-500">
                                 (You)
                               </span>
+                            )}
+                            {isOnline && (
+                              <span
+                                className="w-1.5 h-1.5 bg-green-500 rounded-full"
+                                title="Online"
+                              />
                             )}
                           </div>
                           {!isOwn && (
@@ -850,18 +964,91 @@ export default function Home() {
                 )}
               </div>
             )}
-          </aside>
-        )}
 
-        {user.id && conversationId && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-1">
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+              <button
+                className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                onClick={() => {
+                  dispatch(clearUser());
+                  setConversationId(null);
+                  setMessages([]);
+                  setConversations([]);
+                  wsRef.current?.close();
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-screen">
+        {!user.id ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="max-w-md w-full space-y-4">
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white text-center">
+                Welcome to Mini Messenger
+              </h2>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border rounded-lg px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter username"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleCreateUser();
+                    }
+                  }}
+                />
+                <button
+                  className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
+                  onClick={handleCreateUser}
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : !conversationId ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center space-y-4">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                Select a conversation or create a new one
+              </h2>
+              <div className="flex gap-2 justify-center">
+                <input
+                  className="border rounded-lg px-4 py-2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Paste conversation ID"
+                  value={joinId}
+                  onChange={(e) => setJoinId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleJoinConversation();
+                    }
+                  }}
+                />
+                <button
+                  className="bg-gray-900 dark:bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+                  onClick={handleJoinConversation}
+                >
+                  Join
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col h-screen bg-white dark:bg-[#0f0f0f]">
+            {/* Chat Header */}
+            <div className="border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white dark:bg-[#171717]">
+              <div className="flex items-center gap-3">
                 {editingTitle ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-1">
                     <input
                       type="text"
-                      className="border rounded px-2 py-1 text-sm flex-1 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white"
+                      className="flex-1 border rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Conversation title..."
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
@@ -876,13 +1063,13 @@ export default function Home() {
                       autoFocus
                     />
                     <button
-                      className="text-xs px-2 py-1 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                      className="px-3 py-1.5 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
                       onClick={handleUpdateTitle}
                     >
                       Save
                     </button>
                     <button
-                      className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
+                      className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
                       onClick={() => {
                         setEditingTitle(false);
                         setNewTitle("");
@@ -892,322 +1079,426 @@ export default function Home() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      {conversations.find((c) => c.id === conversationId)
-                        ?.title || "Conversation"}
-                    </span>
+                  <>
+                    <div className="flex flex-col">
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        {conversations.find((c) => c.id === conversationId)?.title ||
+                          "Conversation"}
+                      </h2>
+                      {conversationId && (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            ID: {conversationId}
+                          </span>
+                          <button
+                            className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                            onClick={() => {
+                              navigator.clipboard.writeText(conversationId);
+                              setCopiedId(true);
+                              setTimeout(() => setCopiedId(false), 2000);
+                            }}
+                            title="Copy conversation ID"
+                          >
+                            {copiedId ? (
+                              <span className="text-xs text-green-600 dark:text-green-400">
+                                ✓ Copied
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
+                                📋
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
-                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                       onClick={() => {
-                        const currentTitle =
-                          conversations.find((c) => c.id === conversationId)
-                            ?.title || "";
-                        setNewTitle(currentTitle);
-                        setEditingTitle(true);
+                        const current = conversations.find(
+                          (c) => c.id === conversationId,
+                        );
+                        if (current) {
+                          setNewTitle(current.title);
+                          setEditingTitle(true);
+                        }
                       }}
                       title="Edit title"
                     >
                       ✏️
                     </button>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      ID:{" "}
-                      <span className="font-mono select-all">
-                        {conversationId}
-                      </span>
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
-              <input
-                type="text"
-                className="border rounded px-2 py-1 text-sm w-40 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                placeholder="Search messages..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => setShowJoinDialog(true)}
+                  title="Join another chat"
+                >
+                  + Join Chat
+                </button>
+                <input
+                  type="text"
+                  className="border rounded-lg px-3 py-1.5 text-sm w-40 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Search messages..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
-            <div
-              ref={messagesContainerRef}
-              className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800"
-              onScroll={(e) => {
-                const target = e.currentTarget;
-                // Load more when scrolled to top (within 50px)
-                if (target.scrollTop < 50 && hasMore && !isLoadingMore) {
-                  loadMoreMessages();
-                }
-              }}
-            >
-              {(() => {
-                const messagesArray = Array.isArray(messages) ? messages : [];
-                return messagesArray.length === 0 ? (
-                  <div className="text-gray-400 dark:text-gray-500 text-sm text-center py-8">
-                    No messages yet. Start the conversation!
+
+            {/* Join Chat Dialog */}
+            {showJoinDialog && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                    Join Chat by ID
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Conversation ID
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        placeholder="Paste conversation ID here..."
+                        value={joinDialogId}
+                        onChange={(e) => setJoinDialogId(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            if (joinDialogId.trim()) {
+                              setConversationId(joinDialogId.trim());
+                              setJoinDialogId("");
+                              setShowJoinDialog(false);
+                            }
+                          } else if (e.key === "Escape") {
+                            setShowJoinDialog(false);
+                            setJoinDialogId("");
+                          }
+                        }}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                        onClick={() => {
+                          setShowJoinDialog(false);
+                          setJoinDialogId("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-4 py-2 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => {
+                          if (joinDialogId.trim()) {
+                            setConversationId(joinDialogId.trim());
+                            setJoinDialogId("");
+                            setShowJoinDialog(false);
+                          }
+                        }}
+                        disabled={!joinDialogId.trim()}
+                      >
+                        Join
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    {isLoadingMore && (
-                      <div className="text-center py-2 text-sm text-gray-500 dark:text-gray-400">
-                        Loading older messages...
+                </div>
+              </div>
+            )}
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-hidden flex flex-col bg-gray-50 dark:bg-[#0f0f0f]">
+              <div
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto px-6 py-4"
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  // Load more when scrolled to top (within 50px)
+                  if (target.scrollTop < 50 && hasMore && !isLoadingMore) {
+                    loadMoreMessages();
+                  }
+                }}
+              >
+                {(() => {
+                  const messagesArray = Array.isArray(messages) ? messages : [];
+                  return messagesArray.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-gray-400 dark:text-gray-500">
+                        <p className="text-lg mb-2">No messages yet</p>
+                        <p className="text-sm">Start the conversation!</p>
                       </div>
-                    )}
-                    {!hasMore && messagesArray.length > 0 && (
-                      <div className="text-center py-2 text-xs text-gray-400 dark:text-gray-500">
-                        No more messages
-                      </div>
-                    )}
-                    <ul className="space-y-3">
-                      {messagesArray
-                        .filter((m) =>
-                          searchQuery
-                            ? m.text
-                                .toLowerCase()
-                                .includes(searchQuery.toLowerCase())
-                            : true,
-                        )
-                        .map((m) => {
-                          const isOwn = m.authorId === user.id;
-                          const isEditing = editingMessageId === m.id;
-                          const readers =
-                            m.reads?.filter(
-                              (read) => read.userId !== m.authorId,
-                            ) || [];
-                          const hasReadByOthers = readers.length > 0;
-                          const readByText = hasReadByOthers
-                            ? `Seen by ${readers
-                                .map((r) => r.user?.username ?? "Unknown")
-                                .join(", ")}`
-                            : "Not seen yet";
-                          return (
-                            <li
-                              key={m.id}
-                              className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
-                            >
+                    </div>
+                  ) : (
+                    <>
+                      {isLoadingMore && (
+                        <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+                          Loading older messages...
+                        </div>
+                      )}
+                      {!hasMore && messagesArray.length > 0 && (
+                        <div className="text-center py-2 text-xs text-gray-400 dark:text-gray-500">
+                          No more messages
+                        </div>
+                      )}
+                      <div className="max-w-3xl mx-auto space-y-6">
+                        {messagesArray
+                          .filter((m) =>
+                            searchQuery
+                              ? m.text
+                                  .toLowerCase()
+                                  .includes(searchQuery.toLowerCase())
+                              : true,
+                          )
+                          .map((m) => {
+                            const isOwn = m.authorId === user.id;
+                            const isEditing = editingMessageId === m.id;
+                            const readers =
+                              m.reads?.filter(
+                                (read) => read.userId !== m.authorId,
+                              ) || [];
+                            const hasReadByOthers = readers.length > 0;
+                            return (
                               <div
-                                className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
-                                  isOwn
-                                    ? "bg-blue-600 dark:bg-blue-500 text-white"
-                                    : "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                                key={m.id}
+                                className={`flex gap-4 group ${
+                                  isOwn ? "flex-row-reverse" : ""
                                 }`}
                               >
+                                {/* Avatar */}
                                 {!isOwn && (
                                   <div
-                                    className={`text-xs font-semibold mb-1 flex items-center gap-1 ${
-                                      isOwn
-                                        ? "text-blue-100"
-                                        : "text-gray-600 dark:text-gray-300"
-                                    }`}
+                                    className={`w-8 h-8 rounded-full ${getAvatarColor(
+                                      m.author?.username ?? m.authorId
+                                    )} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}
                                   >
-                                    {m.author?.username ?? m.authorId}
-                                    {m.authorId &&
-                                      onlineUserIds.has(m.authorId) && (
+                                    {getInitials(m.author?.username ?? m.authorId)}
+                                  </div>
+                                )}
+                                {isOwn && (
+                                  <div
+                                    className={`w-8 h-8 rounded-full ${getAvatarColor(
+                                      user.username
+                                    )} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}
+                                  >
+                                    {getInitials(user.username)}
+                                  </div>
+                                )}
+
+                                {/* Message Content */}
+                                <div className={`flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
+                                  {!isOwn && (
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        {m.author?.username ?? m.authorId}
+                                      </span>
+                                      {onlineUserIds.has(m.authorId) && (
                                         <span
-                                          className="w-2 h-2 bg-green-500 rounded-full"
+                                          className="w-1.5 h-1.5 bg-green-500 rounded-full"
                                           title="Online"
                                         />
                                       )}
-                                  </div>
-                                )}
-                                {isEditing ? (
-                                  <div className="space-y-2">
-                                    <input
-                                      className="w-full px-2 py-1 rounded text-gray-900 dark:text-white bg-white dark:bg-gray-600 text-sm border border-gray-300 dark:border-gray-500"
-                                      value={editText}
-                                      onChange={(e) =>
-                                        setEditText(e.target.value)
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter" && !e.shiftKey) {
-                                          e.preventDefault();
-                                          handleEdit(m.id);
-                                        }
-                                        if (e.key === "Escape") {
-                                          setEditingMessageId(null);
-                                          setEditText("");
-                                        }
-                                      }}
-                                      autoFocus
-                                    />
-                                    <div className="flex gap-2">
-                                      <button
-                                        className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
-                                        onClick={() => handleEdit(m.id)}
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-500 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-400"
-                                        onClick={() => {
-                                          setEditingMessageId(null);
-                                          setEditText("");
-                                        }}
-                                      >
-                                        Cancel
-                                      </button>
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        {formatTime(m.createdAt)}
+                                      </span>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="text-sm">{m.text}</div>
-                                    {m.reactions && m.reactions.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-2">
-                                        {Object.entries(
-                                          m.reactions.reduce(
-                                            (acc, r) => {
-                                              if (!acc[r.emoji]) {
-                                                acc[r.emoji] = [];
-                                              }
-                                              acc[r.emoji].push(r);
-                                              return acc;
-                                            },
-                                            {} as Record<string, Reaction[]>,
-                                          ),
-                                        ).map(([emoji, reactions]) => {
-                                          const hasUserReaction =
-                                            reactions.some(
-                                              (r) => r.userId === user.id,
-                                            );
-                                          return (
-                                            <button
-                                              key={emoji}
-                                              className={`text-xs px-2 py-1 rounded border ${
-                                                hasUserReaction
-                                                  ? isOwn
-                                                    ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
-                                                    : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
-                                                  : isOwn
-                                                    ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
-                                                    : "bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500"
-                                              } hover:opacity-80`}
-                                              onClick={() =>
-                                                handleToggleReaction(
-                                                  m.id,
-                                                  emoji,
-                                                )
-                                              }
-                                              title={reactions
-                                                .map(
-                                                  (r) =>
-                                                    r.user?.username ??
-                                                    r.userId,
-                                                )
-                                                .join(", ")}
-                                            >
-                                              {emoji} {reactions.length}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    <div className="flex items-center justify-between gap-2 mt-2">
-                                      <div className="flex flex-col items-start gap-1">
-                                        <div className="flex items-center gap-2">
-                                          <div
-                                            className={`text-xs ${
-                                              isOwn
-                                                ? "text-blue-100"
-                                                : "text-gray-400 dark:text-gray-500"
-                                            }`}
-                                          >
-                                            {formatTime(m.createdAt)}
-                                          </div>
-                                          <EmojiPickerButton
-                                            className={`text-xs opacity-0 group-hover:opacity-100 transition-opacity ${
-                                              isOwn
-                                                ? "text-blue-200"
-                                                : "text-gray-500"
-                                            }`}
-                                            onEmojiClick={(emoji) =>
-                                              handleToggleReaction(m.id, emoji)
+                                  )}
+                                  <div
+                                    className={`rounded-2xl px-4 py-2.5 max-w-[80%] ${
+                                      isOwn
+                                        ? "bg-blue-600 dark:bg-blue-500 text-white"
+                                        : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                                    } shadow-sm`}
+                                  >
+                                    {isEditing ? (
+                                      <div className="space-y-2">
+                                        <input
+                                          className="w-full px-2 py-1 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-700 text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                          value={editText}
+                                          onChange={(e) => setEditText(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && !e.shiftKey) {
+                                              e.preventDefault();
+                                              handleEdit(m.id);
                                             }
-                                            title="Add reaction"
-                                          />
+                                            if (e.key === "Escape") {
+                                              setEditingMessageId(null);
+                                              setEditText("");
+                                            }
+                                          }}
+                                          autoFocus
+                                        />
+                                        <div className="flex gap-2">
+                                          <button
+                                            className="text-xs px-3 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-500 transition-colors"
+                                            onClick={() => handleEdit(m.id)}
+                                          >
+                                            Save
+                                          </button>
+                                          <button
+                                            className="text-xs px-3 py-1 bg-gray-200 dark:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-400 transition-colors"
+                                            onClick={() => {
+                                              setEditingMessageId(null);
+                                              setEditText("");
+                                            }}
+                                          >
+                                            Cancel
+                                          </button>
                                         </div>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                          {m.text}
+                                        </div>
+                                        {m.reactions && m.reactions.length > 0 && (
+                                          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-white/20 dark:border-gray-700">
+                                            {Object.entries(
+                                              m.reactions.reduce(
+                                                (acc, r) => {
+                                                  if (!acc[r.emoji]) {
+                                                    acc[r.emoji] = [];
+                                                  }
+                                                  acc[r.emoji].push(r);
+                                                  return acc;
+                                                },
+                                                {} as Record<string, Reaction[]>,
+                                              ),
+                                            ).map(([emoji, reactions]) => {
+                                              const hasUserReaction = reactions.some(
+                                                (r) => r.userId === user.id,
+                                              );
+                                              return (
+                                                <button
+                                                  key={emoji}
+                                                  className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                                                    hasUserReaction
+                                                      ? isOwn
+                                                        ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
+                                                        : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
+                                                      : isOwn
+                                                        ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
+                                                        : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                                  } hover:opacity-80`}
+                                                  onClick={() =>
+                                                    handleToggleReaction(m.id, emoji)
+                                                  }
+                                                  title={reactions
+                                                    .map((r) => r.user?.username ?? "Unknown")
+                                                    .join(", ")}
+                                                >
+                                                  {emoji} {reactions.length}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
                                         {isOwn && (
-                                          <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                          <div className="text-[10px] text-white/70 dark:text-gray-400 mt-1">
                                             {hasReadByOthers
-                                              ? readByText
+                                              ? `Seen by ${readers
+                                                  .map((r) => r.user?.username ?? "Unknown")
+                                                  .join(", ")}`
                                               : "Not seen yet"}
                                           </div>
                                         )}
-                                      </div>
-                                      {isOwn && (
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <button
-                                            className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-                                            onClick={() => {
-                                              setEditingMessageId(m.id);
-                                              setEditText(m.text);
-                                            }}
-                                            title="Edit"
-                                          >
-                                            ✏️
-                                          </button>
-                                          <button
-                                            className="text-xs px-2 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-                                            onClick={() => handleDelete(m.id)}
-                                            title="Delete"
-                                          >
-                                            🗑️
-                                          </button>
-                                        </div>
-                                      )}
+                                      </>
+                                    )}
+                                  </div>
+                                  {isOwn && !isEditing && (
+                                    <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                                        onClick={() => {
+                                          setEditingMessageId(m.id);
+                                          setEditText(m.text);
+                                        }}
+                                        title="Edit"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button
+                                        className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                                        onClick={() => handleDelete(m.id)}
+                                        title="Delete"
+                                      >
+                                        🗑️
+                                      </button>
+                                      <EmojiPickerButton
+                                        onEmojiClick={(emoji) =>
+                                          handleToggleReaction(m.id, emoji)
+                                        }
+                                      />
                                     </div>
-                                  </>
-                                )}
+                                  )}
+                                  {!isOwn && !isEditing && (
+                                    <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <EmojiPickerButton
+                                        onEmojiClick={(emoji) =>
+                                          handleToggleReaction(m.id, emoji)
+                                        }
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </li>
-                          );
-                        })}
-                    </ul>
-                    <div ref={messagesEndRef} />
-                    {Object.keys(typingUsers).length > 0 && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 italic mt-2 px-2">
-                        {Object.values(typingUsers)
-                          .map((u) => u.username)
-                          .join(", ")}{" "}
-                        {Object.keys(typingUsers).length === 1 ? "is" : "are"}{" "}
-                        typing...
+                            );
+                          })}
                       </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1 flex items-center gap-2">
-                <input
-                  className="border border-gray-300 dark:border-gray-700 rounded px-3 py-2 flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-                  placeholder="Type a message..."
-                  value={text}
-                  onChange={(e) => handleTextChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                />
-                <EmojiPickerButton
-                  onEmojiClick={(emoji) => {
-                    setText((prev) => prev + emoji);
-                  }}
-                  className="text-xl hover:scale-110 transition-transform cursor-pointer"
-                  title="Add emoji"
-                  showQuickReactions={false}
-                />
+                      <div ref={messagesEndRef} />
+                      {Object.keys(typingUsers).length > 0 && (
+                        <div className="text-sm text-gray-500 dark:text-gray-400 italic mt-4 px-4 text-center">
+                          {Object.values(typingUsers)
+                            .map((u) => u.username)
+                            .join(", ")}{" "}
+                          {Object.keys(typingUsers).length === 1 ? "is" : "are"}{" "}
+                          typing...
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
-              <button
-                className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleSend}
-                disabled={!text.trim()}
-              >
-                Send
-              </button>
+
+              {/* Input Area */}
+              <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#171717] px-6 py-4">
+                <div className="max-w-3xl mx-auto">
+                  <div className="flex gap-3 items-end">
+                    <div className="flex-1 relative">
+                      <textarea
+                        className="w-full border rounded-xl px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
+                        placeholder="Type a message..."
+                        value={text}
+                        onChange={(e) => {
+                          handleTextChange(e.target.value);
+                          setText(e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        rows={1}
+                      />
+                    </div>
+                    <button
+                      className="px-6 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleSend}
+                      disabled={!text.trim()}
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

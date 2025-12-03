@@ -40,12 +40,31 @@ app.post('/users', async (req, res) => {
 // Conversations
 app.post('/conversations', async (req, res) => {
   try {
-    const { title, memberUserIds } = req.body as { title?: string; memberUserIds?: string[] };
+    const { title, memberUserIds, creatorId } = req.body as { 
+      title?: string; 
+      memberUserIds?: string[];
+      creatorId?: string;
+    };
     if (!title) return res.status(400).json({ error: 'title required' });
+    if (!creatorId) return res.status(400).json({ error: 'creatorId required' });
+    
     const conversation = await prisma.conversation.create({ data: { title } });
+    
+    // Create membership for creator as owner
+    await prisma.membership.create({
+      data: { userId: creatorId, conversationId: conversation.id, role: 'owner' },
+    });
+    
+    // Add other members as regular members
     if (Array.isArray(memberUserIds) && memberUserIds.length > 0) {
       await prisma.membership.createMany({
-        data: memberUserIds.map((userId) => ({ userId, conversationId: conversation.id })),
+        data: memberUserIds
+          .filter((userId) => userId !== creatorId) // Don't add creator twice
+          .map((userId) => ({ 
+            userId, 
+            conversationId: conversation.id, 
+            role: 'member' 
+          })),
       });
     }
     res.status(201).json(conversation);
@@ -58,12 +77,14 @@ app.get('/conversations', async (req, res) => {
   try {
     const userId = (req.query.userId as string) || '';
     if (!userId) return res.status(400).json({ error: 'userId required' });
-    const memberships = await prisma.membership.findMany({ where: { userId } });
-    const conversationIds = memberships.map((m) => m.conversationId);
-    const conversations = await prisma.conversation.findMany({
-      where: { id: { in: conversationIds } },
-      orderBy: { createdAt: 'desc' },
+    const memberships = await prisma.membership.findMany({ 
+      where: { userId },
+      include: { conversation: true },
     });
+    const conversations = memberships.map((m) => ({
+      ...m.conversation,
+      userRole: m.role, // Include user's role in this conversation
+    }));
     res.json(conversations);
   } catch (e: any) {
     res.status(400).json({ error: e?.message ?? 'failed to list conversations' });
@@ -77,7 +98,7 @@ app.get('/conversations/:id/members', async (req, res) => {
       where: { conversationId },
       include: { user: true },
     });
-    res.json(memberships.map((m) => m.user));
+    res.json(memberships.map((m) => ({ ...m.user, role: m.role })));
   } catch (e: any) {
     res.status(400).json({ error: e?.message ?? 'failed to list members' });
   }
@@ -142,9 +163,9 @@ app.post('/conversations/:id/members', async (req, res) => {
       return res.status(400).json({ error: 'user is already a member' });
     }
     
-    // Add membership
+    // Add membership as regular member
     await prisma.membership.create({
-      data: { userId: targetUserId, conversationId },
+      data: { userId: targetUserId, conversationId, role: 'member' },
     });
     
     // Get updated member list
@@ -152,7 +173,7 @@ app.post('/conversations/:id/members', async (req, res) => {
       where: { conversationId },
       include: { user: true },
     });
-    const members = memberships.map((m) => m.user);
+    const members = memberships.map((m) => ({ ...m.user, role: m.role }));
     
     // Broadcast to all members
     const payload = JSON.stringify({
@@ -197,7 +218,7 @@ app.delete('/conversations/:id/members/:userId', async (req, res) => {
       where: { conversationId },
       include: { user: true },
     });
-    const members = memberships.map((m) => m.user);
+    const members = memberships.map((m) => ({ ...m.user, role: m.role }));
     
     // Broadcast to all members
     const payload = JSON.stringify({
@@ -217,10 +238,70 @@ app.delete('/conversations/:id/members/:userId', async (req, res) => {
   }
 });
 
-// Delete conversation
+// Leave conversation (remove membership but don't delete conversation)
+app.post('/conversations/:id/leave', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const { userId } = req.body as { userId?: string };
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId required' });
+    }
+    
+    // Check if membership exists
+    const membership = await prisma.membership.findUnique({
+      where: { userId_conversationId: { userId, conversationId } },
+      include: { user: true },
+    });
+    
+    if (!membership) {
+      return res.status(404).json({ error: 'membership not found' });
+    }
+    
+    // Don't allow owner to leave (they must delete the conversation)
+    if (membership.role === 'owner') {
+      return res.status(400).json({ error: 'owner cannot leave conversation, delete it instead' });
+    }
+    
+    // Remove membership
+    await prisma.membership.delete({
+      where: { userId_conversationId: { userId, conversationId } },
+    });
+    
+    // Get updated member list
+    const memberships = await prisma.membership.findMany({
+      where: { conversationId },
+      include: { user: true },
+    });
+    const members = memberships.map((m) => ({ ...m.user, role: m.role }));
+    
+    // Broadcast to all members
+    const payload = JSON.stringify({
+      type: 'conversation:member-left',
+      payload: { conversationId, userId, members },
+    });
+    wss.clients.forEach((client) => {
+      if ((client as any).readyState !== 1) return;
+      if ((client as any).roomId === conversationId) {
+        client.send(payload);
+      }
+    });
+    
+    res.json({ success: true, members });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message ?? 'failed to leave conversation' });
+  }
+});
+
+// Delete conversation (only owner can delete)
 app.delete('/conversations/:id', async (req, res) => {
   try {
     const conversationId = req.params.id;
+    const { userId } = req.body as { userId?: string };
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId required' });
+    }
     
     // Check if conversation exists
     const conversation = await prisma.conversation.findUnique({
@@ -229,6 +310,15 @@ app.delete('/conversations/:id', async (req, res) => {
     
     if (!conversation) {
       return res.status(404).json({ error: 'conversation not found' });
+    }
+    
+    // Check if user is owner
+    const membership = await prisma.membership.findUnique({
+      where: { userId_conversationId: { userId, conversationId } },
+    });
+    
+    if (!membership || membership.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can delete conversation' });
     }
     
     // Delete conversation (cascade will delete messages, memberships, reactions, reads)
