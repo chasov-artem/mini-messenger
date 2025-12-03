@@ -13,7 +13,10 @@ if (typeof window !== "undefined") {
   console.log("🔍 API_BASE:", API_BASE);
   console.log("🔍 NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
   if (!process.env.NEXT_PUBLIC_API_URL) {
-    console.warn("⚠️ NEXT_PUBLIC_API_URL не встановлено! Використовується fallback:", API_BASE);
+    console.warn(
+      "⚠️ NEXT_PUBLIC_API_URL не встановлено! Використовується fallback:",
+      API_BASE,
+    );
   }
 }
 
@@ -104,35 +107,35 @@ export default function Home() {
   // Load more messages (older ones)
   const loadMoreMessages = useCallback(async () => {
     if (!conversationId || isLoadingMore || !hasMore) return;
-    
+
     setIsLoadingMore(true);
     const newOffset = messagesOffset + 50;
-    
+
     try {
       const res = await fetch(
-        `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=${newOffset}`
+        `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=${newOffset}`,
       );
       if (!res.ok) throw new Error("Failed to load messages");
-      
+
       const data = await res.json();
       if (data.messages && Array.isArray(data.messages)) {
         // Save scroll position before adding new messages
         const container = messagesContainerRef.current;
         const scrollHeight = container?.scrollHeight || 0;
         const scrollTop = container?.scrollTop || 0;
-        
+
         setMessages((prev) => {
           // Merge old messages with new ones, avoiding duplicates
           const existingIds = new Set(prev.map((m) => m.id));
           const newMessages = data.messages.filter(
-            (m: Message) => !existingIds.has(m.id)
+            (m: Message) => !existingIds.has(m.id),
           );
           return [...newMessages, ...prev];
         });
-        
+
         setMessagesOffset(newOffset);
         setHasMore(data.pagination?.hasMore ?? false);
-        
+
         // Restore scroll position after a short delay
         setTimeout(() => {
           if (container) {
@@ -150,14 +153,16 @@ export default function Home() {
 
   useEffect(() => {
     if (!conversationId) return;
-    
+
     // Reset pagination state
     setMessages([]);
     setMessagesOffset(0);
     setHasMore(true);
-    
+
     // initial history load
-    fetch(`${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=0`)
+    fetch(
+      `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=0`,
+    )
       .then((r) => {
         if (!r.ok) {
           return r.json().then((err) => {
@@ -166,19 +171,21 @@ export default function Home() {
         }
         return r.json();
       })
-      .then((data: { messages?: Message[]; pagination?: { hasMore: boolean } }) => {
-        if (data.messages && Array.isArray(data.messages)) {
-          setMessages(data.messages);
-          markMessagesAsRead(data.messages);
-          setHasMore(data.pagination?.hasMore ?? false);
-          // Scroll to bottom after initial load
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 100);
-        } else {
-          setMessages([]);
-        }
-      })
+      .then(
+        (data: { messages?: Message[]; pagination?: { hasMore: boolean } }) => {
+          if (data.messages && Array.isArray(data.messages)) {
+            setMessages(data.messages);
+            markMessagesAsRead(data.messages);
+            setHasMore(data.pagination?.hasMore ?? false);
+            // Scroll to bottom after initial load
+            setTimeout(() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 100);
+          } else {
+            setMessages([]);
+          }
+        },
+      )
       .catch(() => {
         setMessages([]);
       });
@@ -239,7 +246,10 @@ export default function Home() {
           const container = messagesContainerRef.current;
           if (container) {
             const isNearBottom =
-              container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+              container.scrollHeight -
+                container.scrollTop -
+                container.clientHeight <
+              100;
             if (isNearBottom) {
               setTimeout(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -968,7 +978,7 @@ export default function Home() {
                                 .map((r) => r.user?.username ?? "Unknown")
                                 .join(", ")}`
                             : "Not seen yet";
-  return (
+                          return (
                             <li
                               key={m.id}
                               className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
@@ -1017,7 +1027,7 @@ export default function Home() {
                                         }
                                       }}
                                       autoFocus
-        />
+                                    />
                                     <div className="flex gap-2">
                                       <button
                                         className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
@@ -1120,7 +1130,7 @@ export default function Home() {
                                               : "Not seen yet"}
                                           </div>
                                         )}
-        </div>
+                                      </div>
                                       {isOwn && (
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                           <button
@@ -1197,7 +1207,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        </div>
+      </div>
     </div>
   );
 }
