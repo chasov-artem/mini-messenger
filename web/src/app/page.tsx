@@ -1084,11 +1084,30 @@ export default function Home() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex flex-col">
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {conversations.find((c) => c.id === conversationId)
-                          ?.title || "Conversation"}
-                      </h2>
+                    <div className="flex flex-col flex-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {conversations.find((c) => c.id === conversationId)
+                            ?.title || "Conversation"}
+                        </h2>
+                        {userRole === "owner" && (
+                          <button
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                            onClick={() => {
+                              const current = conversations.find(
+                                (c) => c.id === conversationId,
+                              );
+                              if (current) {
+                                setNewTitle(current.title);
+                                setEditingTitle(true);
+                              }
+                            }}
+                            title="Edit title"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </div>
                       {conversationId && (
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
@@ -1116,23 +1135,6 @@ export default function Home() {
                         </div>
                       )}
                     </div>
-                    {userRole === "owner" && (
-                      <button
-                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                        onClick={() => {
-                          const current = conversations.find(
-                            (c) => c.id === conversationId,
-                          );
-                          if (current) {
-                            setNewTitle(current.title);
-                            setEditingTitle(true);
-                          }
-                        }}
-                        title="Edit title"
-                      >
-                        ✏️
-                      </button>
-                    )}
                   </>
                 )}
               </div>
