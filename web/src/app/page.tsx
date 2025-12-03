@@ -1509,8 +1509,12 @@ export default function Home() {
                   <div className="flex gap-3 items-center">
                     <EmojiPickerButton
                       onEmojiClick={(emoji) => {
-                        const cursorPos = textareaRef.current?.selectionStart || text.length;
-                        const newText = text.slice(0, cursorPos) + emoji + text.slice(cursorPos);
+                        const cursorPos =
+                          textareaRef.current?.selectionStart || text.length;
+                        const newText =
+                          text.slice(0, cursorPos) +
+                          emoji +
+                          text.slice(cursorPos);
                         setText(newText);
                         handleTextChange(newText);
                         // Focus back to textarea and set cursor position after emoji
@@ -1518,7 +1522,10 @@ export default function Home() {
                           if (textareaRef.current) {
                             textareaRef.current.focus();
                             const newCursorPos = cursorPos + emoji.length;
-                            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                            textareaRef.current.setSelectionRange(
+                              newCursorPos,
+                              newCursorPos,
+                            );
                           }
                         }, 0);
                       }}
