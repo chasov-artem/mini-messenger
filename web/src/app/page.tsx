@@ -73,6 +73,11 @@ export default function Home() {
   const [newTitle, setNewTitle] = useState("");
   const [addingMember, setAddingMember] = useState(false);
   const [newMemberUsername, setNewMemberUsername] = useState("");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [messagesOffset, setMessagesOffset] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -96,10 +101,63 @@ export default function Home() {
     [user.id, conversationId],
   );
 
+  // Load more messages (older ones)
+  const loadMoreMessages = useCallback(async () => {
+    if (!conversationId || isLoadingMore || !hasMore) return;
+    
+    setIsLoadingMore(true);
+    const newOffset = messagesOffset + 50;
+    
+    try {
+      const res = await fetch(
+        `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=${newOffset}`
+      );
+      if (!res.ok) throw new Error("Failed to load messages");
+      
+      const data = await res.json();
+      if (data.messages && Array.isArray(data.messages)) {
+        // Save scroll position before adding new messages
+        const container = messagesContainerRef.current;
+        const scrollHeight = container?.scrollHeight || 0;
+        const scrollTop = container?.scrollTop || 0;
+        
+        setMessages((prev) => {
+          // Merge old messages with new ones, avoiding duplicates
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMessages = data.messages.filter(
+            (m: Message) => !existingIds.has(m.id)
+          );
+          return [...newMessages, ...prev];
+        });
+        
+        setMessagesOffset(newOffset);
+        setHasMore(data.pagination?.hasMore ?? false);
+        
+        // Restore scroll position after a short delay
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - scrollHeight + scrollTop;
+          }
+        }, 0);
+      }
+    } catch (error) {
+      console.error("Failed to load more messages:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [conversationId, isLoadingMore, hasMore, messagesOffset]);
+
   useEffect(() => {
     if (!conversationId) return;
+    
+    // Reset pagination state
+    setMessages([]);
+    setMessagesOffset(0);
+    setHasMore(true);
+    
     // initial history load
-    fetch(`${API_BASE}/messages?conversationId=${conversationId}`)
+    fetch(`${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=0`)
       .then((r) => {
         if (!r.ok) {
           return r.json().then((err) => {
@@ -108,10 +166,15 @@ export default function Home() {
         }
         return r.json();
       })
-      .then((data: Message[]) => {
-        if (Array.isArray(data)) {
-          setMessages(data);
-          markMessagesAsRead(data);
+      .then((data: { messages?: Message[]; pagination?: { hasMore: boolean } }) => {
+        if (data.messages && Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          markMessagesAsRead(data.messages);
+          setHasMore(data.pagination?.hasMore ?? false);
+          // Scroll to bottom after initial load
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
         } else {
           setMessages([]);
         }
@@ -171,6 +234,17 @@ export default function Home() {
           });
           if (incoming.authorId !== user.id) {
             markMessagesAsRead([incoming]);
+          }
+          // Auto-scroll to bottom if user is near bottom (within 100px)
+          const container = messagesContainerRef.current;
+          if (container) {
+            const isNearBottom =
+              container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+            if (isNearBottom) {
+              setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
+            }
           }
         } else if (data?.type === "message:updated") {
           const updated = data.payload as Message;
@@ -409,6 +483,10 @@ export default function Home() {
         }
         return [...prev, created];
       });
+      // Scroll to bottom after sending
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
     } catch {
       // WebSocket все одно може доставити повідомлення
     }
@@ -839,7 +917,17 @@ export default function Home() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800">
+            <div
+              ref={messagesContainerRef}
+              className="border border-gray-300 dark:border-gray-700 rounded p-4 h-96 overflow-y-auto bg-gray-50 dark:bg-gray-800"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                // Load more when scrolled to top (within 50px)
+                if (target.scrollTop < 50 && hasMore && !isLoadingMore) {
+                  loadMoreMessages();
+                }
+              }}
+            >
               {(() => {
                 const messagesArray = Array.isArray(messages) ? messages : [];
                 return messagesArray.length === 0 ? (
@@ -848,6 +936,16 @@ export default function Home() {
                   </div>
                 ) : (
                   <>
+                    {isLoadingMore && (
+                      <div className="text-center py-2 text-sm text-gray-500 dark:text-gray-400">
+                        Loading older messages...
+                      </div>
+                    )}
+                    {!hasMore && messagesArray.length > 0 && (
+                      <div className="text-center py-2 text-xs text-gray-400 dark:text-gray-500">
+                        No more messages
+                      </div>
+                    )}
                     <ul className="space-y-3">
                       {messagesArray
                         .filter((m) =>
@@ -870,7 +968,7 @@ export default function Home() {
                                 .map((r) => r.user?.username ?? "Unknown")
                                 .join(", ")}`
                             : "Not seen yet";
-                          return (
+  return (
                             <li
                               key={m.id}
                               className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
@@ -919,7 +1017,7 @@ export default function Home() {
                                         }
                                       }}
                                       autoFocus
-                                    />
+        />
                                     <div className="flex gap-2">
                                       <button
                                         className="text-xs px-2 py-1 bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 rounded hover:bg-gray-100 dark:hover:bg-gray-500"
@@ -1022,7 +1120,7 @@ export default function Home() {
                                               : "Not seen yet"}
                                           </div>
                                         )}
-                                      </div>
+        </div>
                                       {isOwn && (
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                           <button
@@ -1052,6 +1150,7 @@ export default function Home() {
                           );
                         })}
                     </ul>
+                    <div ref={messagesEndRef} />
                     {Object.keys(typingUsers).length > 0 && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 italic mt-2 px-2">
                         {Object.values(typingUsers)
@@ -1098,7 +1197,7 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 }

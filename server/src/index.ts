@@ -289,6 +289,15 @@ app.get('/messages', async (req, res) => {
   try {
     const conversationId = (req.query.conversationId as string) || '';
     if (!conversationId) return res.status(400).json({ error: 'conversationId required' });
+    
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
+    
+    // Get total count for pagination info
+    const totalCount = await prisma.message.count({
+      where: { conversationId },
+    });
+    
     const messages = await prisma.message.findMany({
       where: { conversationId },
       include: {
@@ -296,9 +305,23 @@ app.get('/messages', async (req, res) => {
         reactions: { include: { user: true } },
         reads: { include: { user: true } },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' }, // Newest first for pagination
+      take: limit,
+      skip: offset,
     });
-    res.json(messages);
+    
+    // Reverse to show oldest first (for display)
+    const reversedMessages = messages.reverse();
+    
+    res.json({
+      messages: reversedMessages,
+      pagination: {
+        offset,
+        limit,
+        total: totalCount,
+        hasMore: offset + limit < totalCount,
+      },
+    });
   } catch (e: any) {
     res.status(400).json({ error: e?.message ?? 'failed to list messages' });
   }
