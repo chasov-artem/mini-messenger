@@ -206,8 +206,8 @@ export default function Home() {
         // Update role in conversations list
         setConversations((prev) =>
           prev.map((c) =>
-            c.id === conversationId ? { ...c, userRole: role || undefined } : c
-          )
+            c.id === conversationId ? { ...c, userRole: role || undefined } : c,
+          ),
         );
       })
       .catch(() => {});
@@ -329,8 +329,8 @@ export default function Home() {
               prev.map((c) =>
                 c.id === conversationId
                   ? { ...c, userRole: currentUserMember.role || undefined }
-                  : c
-              )
+                  : c,
+              ),
             );
           }
           // Reload conversations list to show updated member count
@@ -428,10 +428,10 @@ export default function Home() {
     const res = await fetch(`${API_BASE}/conversations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        title: "General", 
+      body: JSON.stringify({
+        title: "General",
         creatorId: user.id,
-        memberUserIds: [] 
+        memberUserIds: [],
       }),
     });
     const data = await res.json();
@@ -597,11 +597,11 @@ export default function Home() {
   }
 
   async function handleUpdateTitle() {
-    if (!conversationId || !newTitle.trim()) return;
+    if (!conversationId || !newTitle.trim() || !user.id) return;
     const res = await fetch(`${API_BASE}/conversations/${conversationId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle.trim() }),
+      body: JSON.stringify({ title: newTitle.trim(), userId: user.id }),
     });
     if (res.ok) {
       setEditingTitle(false);
@@ -771,7 +771,7 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <div
                 className={`w-8 h-8 rounded-full ${getAvatarColor(
-                  user.username
+                  user.username,
                 )} flex items-center justify-center text-white text-xs font-semibold`}
               >
                 {getInitials(user.username)}
@@ -930,12 +930,14 @@ export default function Home() {
                           <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                             <div
                               className={`w-6 h-6 rounded-full ${getAvatarColor(
-                                member.username
+                                member.username,
                               )} flex items-center justify-center text-white text-xs font-semibold`}
                             >
                               {getInitials(member.username)}
                             </div>
-                            <span className="font-medium">{member.username}</span>
+                            <span className="font-medium">
+                              {member.username}
+                            </span>
                             {isOwn && (
                               <span className="text-xs text-gray-400 dark:text-gray-500">
                                 (You)
@@ -1082,8 +1084,8 @@ export default function Home() {
                   <>
                     <div className="flex flex-col">
                       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {conversations.find((c) => c.id === conversationId)?.title ||
-                          "Conversation"}
+                        {conversations.find((c) => c.id === conversationId)
+                          ?.title || "Conversation"}
                       </h2>
                       {conversationId && (
                         <div className="flex items-center gap-2 mt-0.5">
@@ -1112,21 +1114,23 @@ export default function Home() {
                         </div>
                       )}
                     </div>
-                    <button
-                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                      onClick={() => {
-                        const current = conversations.find(
-                          (c) => c.id === conversationId,
-                        );
-                        if (current) {
-                          setNewTitle(current.title);
-                          setEditingTitle(true);
-                        }
-                      }}
-                      title="Edit title"
-                    >
-                      ✏️
-                    </button>
+                    {userRole === "owner" && (
+                      <button
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                        onClick={() => {
+                          const current = conversations.find(
+                            (c) => c.id === conversationId,
+                          );
+                          if (current) {
+                            setNewTitle(current.title);
+                            setEditingTitle(true);
+                          }
+                        }}
+                        title="Edit title"
+                      >
+                        ✏️
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1272,16 +1276,18 @@ export default function Home() {
                                 {!isOwn && (
                                   <div
                                     className={`w-8 h-8 rounded-full ${getAvatarColor(
-                                      m.author?.username ?? m.authorId
+                                      m.author?.username ?? m.authorId,
                                     )} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}
                                   >
-                                    {getInitials(m.author?.username ?? m.authorId)}
+                                    {getInitials(
+                                      m.author?.username ?? m.authorId,
+                                    )}
                                   </div>
                                 )}
                                 {isOwn && (
                                   <div
                                     className={`w-8 h-8 rounded-full ${getAvatarColor(
-                                      user.username
+                                      user.username,
                                     )} flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}
                                   >
                                     {getInitials(user.username)}
@@ -1289,7 +1295,9 @@ export default function Home() {
                                 )}
 
                                 {/* Message Content */}
-                                <div className={`flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
+                                <div
+                                  className={`flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}
+                                >
                                   {!isOwn && (
                                     <div className="flex items-center gap-2 mb-1">
                                       <span className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1318,9 +1326,14 @@ export default function Home() {
                                         <input
                                           className="w-full px-2 py-1 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-700 text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                           value={editText}
-                                          onChange={(e) => setEditText(e.target.value)}
+                                          onChange={(e) =>
+                                            setEditText(e.target.value)
+                                          }
                                           onKeyDown={(e) => {
-                                            if (e.key === "Enter" && !e.shiftKey) {
+                                            if (
+                                              e.key === "Enter" &&
+                                              !e.shiftKey
+                                            ) {
                                               e.preventDefault();
                                               handleEdit(m.id);
                                             }
@@ -1354,53 +1367,69 @@ export default function Home() {
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                                           {m.text}
                                         </div>
-                                        {m.reactions && m.reactions.length > 0 && (
-                                          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-white/20 dark:border-gray-700">
-                                            {Object.entries(
-                                              m.reactions.reduce(
-                                                (acc, r) => {
-                                                  if (!acc[r.emoji]) {
-                                                    acc[r.emoji] = [];
-                                                  }
-                                                  acc[r.emoji].push(r);
-                                                  return acc;
-                                                },
-                                                {} as Record<string, Reaction[]>,
-                                              ),
-                                            ).map(([emoji, reactions]) => {
-                                              const hasUserReaction = reactions.some(
-                                                (r) => r.userId === user.id,
-                                              );
-                                              return (
-                                                <button
-                                                  key={emoji}
-                                                  className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
-                                                    hasUserReaction
-                                                      ? isOwn
-                                                        ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
-                                                        : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
-                                                      : isOwn
-                                                        ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
-                                                        : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                                                  } hover:opacity-80`}
-                                                  onClick={() =>
-                                                    handleToggleReaction(m.id, emoji)
-                                                  }
-                                                  title={reactions
-                                                    .map((r) => r.user?.username ?? "Unknown")
-                                                    .join(", ")}
-                                                >
-                                                  {emoji} {reactions.length}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
+                                        {m.reactions &&
+                                          m.reactions.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-white/20 dark:border-gray-700">
+                                              {Object.entries(
+                                                m.reactions.reduce(
+                                                  (acc, r) => {
+                                                    if (!acc[r.emoji]) {
+                                                      acc[r.emoji] = [];
+                                                    }
+                                                    acc[r.emoji].push(r);
+                                                    return acc;
+                                                  },
+                                                  {} as Record<
+                                                    string,
+                                                    Reaction[]
+                                                  >,
+                                                ),
+                                              ).map(([emoji, reactions]) => {
+                                                const hasUserReaction =
+                                                  reactions.some(
+                                                    (r) => r.userId === user.id,
+                                                  );
+                                                return (
+                                                  <button
+                                                    key={emoji}
+                                                    className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                                                      hasUserReaction
+                                                        ? isOwn
+                                                          ? "bg-blue-500 dark:bg-blue-400 border-blue-400 dark:border-blue-300"
+                                                          : "bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700"
+                                                        : isOwn
+                                                          ? "bg-blue-700 dark:bg-blue-600 border-blue-600 dark:border-blue-500"
+                                                          : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                                    } hover:opacity-80`}
+                                                    onClick={() =>
+                                                      handleToggleReaction(
+                                                        m.id,
+                                                        emoji,
+                                                      )
+                                                    }
+                                                    title={reactions
+                                                      .map(
+                                                        (r) =>
+                                                          r.user?.username ??
+                                                          "Unknown",
+                                                      )
+                                                      .join(", ")}
+                                                  >
+                                                    {emoji} {reactions.length}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
                                         {isOwn && (
                                           <div className="text-[10px] text-white/70 dark:text-gray-400 mt-1">
                                             {hasReadByOthers
                                               ? `Seen by ${readers
-                                                  .map((r) => r.user?.username ?? "Unknown")
+                                                  .map(
+                                                    (r) =>
+                                                      r.user?.username ??
+                                                      "Unknown",
+                                                  )
                                                   .join(", ")}`
                                               : "Not seen yet"}
                                           </div>

@@ -104,14 +104,27 @@ app.get('/conversations/:id/members', async (req, res) => {
   }
 });
 
-// Update conversation title
+// Update conversation title (only owner can update)
 app.patch('/conversations/:id', async (req, res) => {
   try {
     const conversationId = req.params.id;
-    const { title } = req.body as { title?: string };
+    const { title, userId } = req.body as { title?: string; userId?: string };
     if (!title || title.trim() === '') {
       return res.status(400).json({ error: 'title is required' });
     }
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    
+    // Check if user is owner
+    const membership = await prisma.membership.findUnique({
+      where: { userId_conversationId: { userId, conversationId } },
+    });
+    
+    if (!membership || membership.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can update conversation title' });
+    }
+    
     const updated = await prisma.conversation.update({
       where: { id: conversationId },
       data: { title: title.trim() },
