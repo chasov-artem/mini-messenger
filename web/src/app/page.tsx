@@ -86,6 +86,7 @@ export default function Home() {
   const [messagesOffset, setMessagesOffset] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -1506,8 +1507,28 @@ export default function Home() {
               <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#171717] px-6 py-4">
                 <div className="max-w-3xl mx-auto">
                   <div className="flex gap-3 items-center">
+                    <EmojiPickerButton
+                      onEmojiClick={(emoji) => {
+                        const cursorPos = textareaRef.current?.selectionStart || text.length;
+                        const newText = text.slice(0, cursorPos) + emoji + text.slice(cursorPos);
+                        setText(newText);
+                        handleTextChange(newText);
+                        // Focus back to textarea and set cursor position after emoji
+                        setTimeout(() => {
+                          if (textareaRef.current) {
+                            textareaRef.current.focus();
+                            const newCursorPos = cursorPos + emoji.length;
+                            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                          }
+                        }, 0);
+                      }}
+                      className="text-xl hover:scale-110 transition-transform cursor-pointer"
+                      title="Add emoji"
+                      showQuickReactions={false}
+                    />
                     <div className="flex-1 relative">
                       <textarea
+                        ref={textareaRef}
                         className="w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
                         placeholder="Type a message..."
                         value={text}
