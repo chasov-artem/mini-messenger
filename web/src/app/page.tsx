@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { setUser, clearUser, toggleTheme } from "@/store";
 import EmojiPickerButton from "@/components/EmojiPickerButton";
+import { getToken, setToken, removeToken, getAuthHeaders } from "@/utils/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -56,7 +57,11 @@ export default function Home() {
   const dispatch = useDispatch();
   const user = useSelector((s: RootState) => s.user);
   const theme = useSelector((s: RootState) => s.theme.mode);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -101,8 +106,8 @@ export default function Home() {
 
       fetch(`${API_BASE}/messages/read`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, messageIds: unreadIds }),
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ messageIds: unreadIds }),
       }).catch(() => {
         // ignore errors for now
       });
@@ -120,6 +125,7 @@ export default function Home() {
     try {
       const res = await fetch(
         `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=${newOffset}`,
+        { headers: getAuthHeaders() },
       );
       if (!res.ok) throw new Error("Failed to load messages");
 
@@ -168,6 +174,7 @@ export default function Home() {
     // initial history load
     fetch(
       `${API_BASE}/messages?conversationId=${conversationId}&limit=50&offset=0`,
+      { headers: getAuthHeaders() },
     )
       .then((r) => {
         if (!r.ok) {
@@ -196,7 +203,9 @@ export default function Home() {
         setMessages([]);
       });
     // load conversation members
-    fetch(`${API_BASE}/conversations/${conversationId}/members`)
+    fetch(`${API_BASE}/conversations/${conversationId}/members`, {
+      headers: getAuthHeaders(),
+    })
       .then((r) => r.json())
       .then((data: Array<{ id: string; username: string; role?: string }>) => {
         setConversationMembers(data);
@@ -205,21 +214,29 @@ export default function Home() {
         const role = currentUserMember?.role || null;
         setUserRole(role);
         // Update role in conversations list
-        setConversations((prev) =>
-          prev.map((c) =>
+        setConversations((prev) => {
+          if (!Array.isArray(prev)) return [];
+          return prev.map((c) =>
             c.id === conversationId ? { ...c, userRole: role || undefined } : c,
-          ),
-        );
+          );
+        });
       })
       .catch(() => {});
     // load conversation details to get title
     if (user.id) {
-      fetch(`${API_BASE}/conversations?userId=${user.id}`)
-        .then((r) => r.json())
-        .then((data: Conversation[]) => {
+      fetch(`${API_BASE}/conversations`, {
+        headers: getAuthHeaders(),
+      })
+        .then((r) => {
+          if (!r.ok) return null;
+          return r.json();
+        })
+        .then((data: Conversation[] | null) => {
+          if (!data || !Array.isArray(data)) return;
           const current = data.find((c) => c.id === conversationId);
           if (current) {
             setConversations((prev) => {
+              if (!Array.isArray(prev)) return [current];
               const exists = prev.some((c) => c.id === current.id);
               if (exists) {
                 return prev.map((c) => (c.id === current.id ? current : c));
@@ -313,9 +330,10 @@ export default function Home() {
           setOnlineUserIds(new Set(userIds));
         } else if (data?.type === "conversation:updated") {
           const updated = data.payload as Conversation;
-          setConversations((prev) =>
-            prev.map((c) => (c.id === updated.id ? updated : c)),
-          );
+          setConversations((prev) => {
+            if (!Array.isArray(prev)) return [];
+            return prev.map((c) => (c.id === updated.id ? updated : c));
+          });
         } else if (data?.type === "conversation:member-added") {
           const { members } = data.payload as {
             members: Array<{ id: string; username: string; role?: string }>;
@@ -326,13 +344,14 @@ export default function Home() {
           if (currentUserMember) {
             setUserRole(currentUserMember.role || null);
             // Update role in conversations list
-            setConversations((prev) =>
-              prev.map((c) =>
+            setConversations((prev) => {
+              if (!Array.isArray(prev)) return [];
+              return prev.map((c) =>
                 c.id === conversationId
                   ? { ...c, userRole: currentUserMember.role || undefined }
                   : c,
-              ),
-            );
+              );
+            });
           }
           // Reload conversations list to show updated member count
           if (user.id) void loadConversations();
@@ -377,7 +396,10 @@ export default function Home() {
             conversationId: string;
           };
           // Remove from conversations list
-          setConversations((prev) => prev.filter((c) => c.id !== deletedId));
+          setConversations((prev) => {
+            if (!Array.isArray(prev)) return [];
+            return prev.filter((c) => c.id !== deletedId);
+          });
           // If current conversation was deleted, close it
           if (conversationId === deletedId) {
             setConversationId(null);
@@ -408,30 +430,148 @@ export default function Home() {
     }
   }, [conversationId, user.id]);
 
-  async function handleCreateUser() {
-    if (!usernameInput.trim()) return;
-    const res = await fetch(`${API_BASE}/users`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: usernameInput.trim() }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      dispatch(setUser({ id: data.id, username: data.username }));
-      void loadConversations(data.id as string);
-    } else {
-      alert(data?.error ?? "Failed to create user");
+  // Check authentication on mount
+  useEffect(() => {
+    async function checkAuth() {
+      const token = getToken();
+      if (!token) {
+        setIsLoadingAuth(false);
+        setIsAuthenticated(false);
+        setConversations([]);
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const userData = await res.json();
+          dispatch(setUser({ id: userData.id, username: userData.username }));
+          setIsAuthenticated(true);
+          // Load conversations after setting user
+          try {
+            const r = await fetch(`${API_BASE}/conversations`, {
+              headers: getAuthHeaders(),
+            });
+            if (r.ok) {
+              const conversationsData = await r.json();
+              setConversations(Array.isArray(conversationsData) ? conversationsData : []);
+            } else {
+              setConversations([]);
+            }
+          } catch (err) {
+            console.error("Failed to load conversations:", err);
+            setConversations([]);
+          }
+        } else {
+          // Token invalid, remove it
+          removeToken();
+          setIsAuthenticated(false);
+          setConversations([]);
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error);
+        removeToken();
+        setIsAuthenticated(false);
+        setConversations([]);
+      } finally {
+        setIsLoadingAuth(false);
+      }
     }
+    checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleRegister() {
+    if (!usernameInput.trim() || !passwordInput.trim()) {
+      alert("Username and password are required");
+      return;
+    }
+    if (usernameInput.trim().length < 3) {
+      alert("Username must be at least 3 characters");
+      return;
+    }
+    if (passwordInput.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameInput.trim(),
+          password: passwordInput,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToken(data.token);
+        dispatch(setUser({ id: data.user.id, username: data.user.username }));
+        setIsAuthenticated(true);
+        setUsernameInput("");
+        setPasswordInput("");
+        void loadConversations(data.user.id);
+      } else {
+        alert(data?.error ?? "Failed to register");
+      }
+    } catch (error) {
+      console.error("Registration failed:", error);
+      alert("Failed to register. Please try again.");
+    }
+  }
+
+  async function handleLogin() {
+    if (!usernameInput.trim() || !passwordInput.trim()) {
+      alert("Username and password are required");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameInput.trim(),
+          password: passwordInput,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToken(data.token);
+        dispatch(setUser({ id: data.user.id, username: data.user.username }));
+        setIsAuthenticated(true);
+        setUsernameInput("");
+        setPasswordInput("");
+        void loadConversations(data.user.id);
+      } else {
+        alert(data?.error ?? "Failed to login");
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+      alert("Failed to login. Please try again.");
+    }
+  }
+
+  function handleLogout() {
+    removeToken();
+    dispatch(clearUser());
+    setIsAuthenticated(false);
+    setConversationId(null);
+    setMessages([]);
+    setConversations([]);
+    wsRef.current?.close();
   }
 
   async function handleCreateConversation() {
     if (!user.id) return;
     const res = await fetch(`${API_BASE}/conversations`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         title: "General",
-        creatorId: user.id,
         memberUserIds: [],
       }),
     });
@@ -441,15 +581,16 @@ export default function Home() {
       setMessages([]);
       setOnlineUserIds(new Set());
       setConversationMembers([]);
-      setConversations((prev) => [
-        {
+      setConversations((prev) => {
+        const newConv = {
           id: data.id as string,
           title: data.title as string,
           createdAt: data.createdAt as string,
           userRole: "owner", // Creator is always owner
-        },
-        ...prev,
-      ]);
+        };
+        if (!Array.isArray(prev)) return [newConv];
+        return [newConv, ...prev];
+      });
     } else {
       alert(data?.error ?? "Failed to create conversation");
     }
@@ -468,10 +609,17 @@ export default function Home() {
     if (!uid) return;
     try {
       setIsLoadingConversations(true);
-      const r = await fetch(`${API_BASE}/conversations?userId=${uid}`);
-      const data = (await r.json()) as Conversation[];
-      setConversations(data);
+      const r = await fetch(`${API_BASE}/conversations`, {
+        headers: getAuthHeaders(),
+      });
+      if (r.ok) {
+        const data = (await r.json()) as Conversation[];
+        setConversations(Array.isArray(data) ? data : []);
+      } else {
+        setConversations([]);
+      }
     } catch {
+      setConversations([]);
     } finally {
       setIsLoadingConversations(false);
     }
@@ -529,11 +677,11 @@ export default function Home() {
 
   async function handleSend() {
     if (!user.id || !conversationId || !text.trim()) return;
-    const body = { conversationId, authorId: user.id, text: text.trim() };
+    const body = { conversationId, text: text.trim() };
     setText("");
     const res = await fetch(`${API_BASE}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body),
     });
     try {
@@ -563,8 +711,8 @@ export default function Home() {
     if (!user.id || !editText.trim()) return;
     const res = await fetch(`${API_BASE}/messages/${messageId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: editText.trim(), authorId: user.id }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ text: editText.trim() }),
     });
     if (res.ok) {
       setEditingMessageId(null);
@@ -579,8 +727,7 @@ export default function Home() {
     if (!user.id || !confirm("Delete this message?")) return;
     const res = await fetch(`${API_BASE}/messages/${messageId}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ authorId: user.id }),
+      headers: getAuthHeaders(),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -592,8 +739,8 @@ export default function Home() {
     if (!user.id) return;
     await fetch(`${API_BASE}/messages/${messageId}/reactions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, emoji }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ emoji }),
     });
   }
 
@@ -601,8 +748,8 @@ export default function Home() {
     if (!conversationId || !newTitle.trim() || !user.id) return;
     const res = await fetch(`${API_BASE}/conversations/${conversationId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle.trim(), userId: user.id }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ title: newTitle.trim() }),
     });
     if (res.ok) {
       setEditingTitle(false);
@@ -619,7 +766,7 @@ export default function Home() {
       `${API_BASE}/conversations/${conversationId}/members`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ username: newMemberUsername.trim() }),
       },
     );
@@ -642,7 +789,7 @@ export default function Home() {
       `${API_BASE}/conversations/${conversationId}/members/${memberId}`,
       {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
       },
     );
     if (!res.ok) {
@@ -660,8 +807,7 @@ export default function Home() {
       return;
     const res = await fetch(`${API_BASE}/conversations/${convId}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id }),
+      headers: getAuthHeaders(),
     });
     if (res.ok) {
       // If deleted conversation was the current one, close it
@@ -672,7 +818,10 @@ export default function Home() {
         setUserRole(null);
       }
       // Remove from conversations list
-      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      setConversations((prev) => {
+        if (!Array.isArray(prev)) return [];
+        return prev.filter((c) => c.id !== convId);
+      });
     } else {
       const data = await res.json();
       alert(data?.error ?? "Failed to delete conversation");
@@ -688,8 +837,7 @@ export default function Home() {
       return;
     const res = await fetch(`${API_BASE}/conversations/${convId}/leave`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id }),
+      headers: getAuthHeaders(),
     });
     if (res.ok) {
       // If left conversation was the current one, close it
@@ -700,7 +848,10 @@ export default function Home() {
         setUserRole(null);
       }
       // Remove from conversations list
-      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      setConversations((prev) => {
+        if (!Array.isArray(prev)) return [];
+        return prev.filter((c) => c.id !== convId);
+      });
     } else {
       const data = await res.json();
       alert(data?.error ?? "Failed to leave conversation");
@@ -812,7 +963,7 @@ export default function Home() {
                 </button>
               </div>
               <ul className="space-y-1">
-                {conversations.length === 0 ? (
+                {!Array.isArray(conversations) || conversations.length === 0 ? (
                   <li className="px-2 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">
                     No conversations
                   </li>
@@ -973,13 +1124,7 @@ export default function Home() {
             <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
               <button
                 className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                onClick={() => {
-                  dispatch(clearUser());
-                  setConversationId(null);
-                  setMessages([]);
-                  setConversations([]);
-                  wsRef.current?.close();
-                }}
+                onClick={handleLogout}
               >
                 Logout
               </button>
@@ -990,29 +1135,85 @@ export default function Home() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen">
-        {!user.id ? (
+        {isLoadingAuth ? (
           <div className="flex-1 flex items-center justify-center p-8">
-            <div className="max-w-md w-full space-y-4">
+            <div className="text-center">
+              <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+            </div>
+          </div>
+        ) : !isAuthenticated ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="max-w-md w-full space-y-6">
               <h2 className="text-2xl font-semibold text-gray-900 dark:text-white text-center">
                 Welcome to Mini Messenger
               </h2>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border rounded-lg px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter username"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleCreateUser();
-                    }
-                  }}
-                />
+              
+              {/* Auth Mode Toggle */}
+              <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
                 <button
-                  className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
-                  onClick={handleCreateUser}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                    authMode === "login"
+                      ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                  onClick={() => setAuthMode("login")}
                 >
-                  Continue
+                  Login
+                </button>
+                <button
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                    authMode === "register"
+                      ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                  onClick={() => setAuthMode("register")}
+                >
+                  Register
+                </button>
+              </div>
+
+              {/* Auth Form */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter username"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        authMode === "login" ? handleLogin() : handleRegister();
+                      }
+                    }}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full border rounded-lg px-4 py-3 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        authMode === "login" ? handleLogin() : handleRegister();
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  className="w-full bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
+                  onClick={authMode === "login" ? handleLogin : handleRegister}
+                >
+                  {authMode === "login" ? "Login" : "Register"}
                 </button>
               </div>
             </div>
@@ -1515,10 +1716,11 @@ export default function Home() {
                         const isFocused = document.activeElement === textarea;
                         // Check if textarea is focused and selectionStart is available (not null/undefined)
                         // Use nullish coalescing (??) instead of || to correctly handle cursor position 0
-                        const cursorPos = (isFocused && textarea?.selectionStart != null)
-                          ? textarea.selectionStart
-                          : text.length;
-                        
+                        const cursorPos =
+                          isFocused && textarea?.selectionStart != null
+                            ? textarea.selectionStart
+                            : text.length;
+
                         const newText =
                           text.slice(0, cursorPos) +
                           emoji +

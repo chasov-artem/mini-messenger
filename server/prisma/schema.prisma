@@ -11,6 +11,7 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   username  String   @unique
+  password  String?  // Hashed password (optional for backward compatibility)
   createdAt DateTime @default(now())
   messages  Message[]
   members   Membership[]
