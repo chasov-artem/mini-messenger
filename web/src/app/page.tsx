@@ -1509,8 +1509,16 @@ export default function Home() {
                   <div className="flex gap-3 items-center">
                     <EmojiPickerButton
                       onEmojiClick={(emoji) => {
-                        const cursorPos =
-                          textareaRef.current?.selectionStart || text.length;
+                        // Get cursor position, using nullish coalescing to handle 0 correctly
+                        // If textarea is not focused or selectionStart is null/undefined, use text.length
+                        const textarea = textareaRef.current;
+                        const isFocused = document.activeElement === textarea;
+                        // Check if textarea is focused and selectionStart is available (not null/undefined)
+                        // Use nullish coalescing (??) instead of || to correctly handle cursor position 0
+                        const cursorPos = (isFocused && textarea?.selectionStart != null)
+                          ? textarea.selectionStart
+                          : text.length;
+                        
                         const newText =
                           text.slice(0, cursorPos) +
                           emoji +
