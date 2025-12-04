@@ -440,7 +440,7 @@ export default function Home() {
         setConversations([]);
         return;
       }
-      
+
       try {
         const res = await fetch(`${API_BASE}/auth/me`, {
           headers: getAuthHeaders(),
@@ -456,7 +456,9 @@ export default function Home() {
             });
             if (r.ok) {
               const conversationsData = await r.json();
-              setConversations(Array.isArray(conversationsData) ? conversationsData : []);
+              setConversations(
+                Array.isArray(conversationsData) ? conversationsData : [],
+              );
             } else {
               setConversations([]);
             }
@@ -496,7 +498,7 @@ export default function Home() {
       alert("Password must be at least 6 characters");
       return;
     }
-    
+
     try {
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
@@ -528,7 +530,7 @@ export default function Home() {
       alert("Username and password are required");
       return;
     }
-    
+
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
@@ -1147,7 +1149,7 @@ export default function Home() {
               <h2 className="text-2xl font-semibold text-gray-900 dark:text-white text-center">
                 Welcome to Mini Messenger
               </h2>
-              
+
               {/* Auth Mode Toggle */}
               <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
                 <button
