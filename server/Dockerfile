@@ -24,6 +24,6 @@ RUN npm run build
 # Expose port
 EXPOSE 4000
 
-# Start server (migrations run at startup)
-CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push && npm start"]
+# Start server (sync schema at startup - using db push for flexibility with existing data)
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
 
