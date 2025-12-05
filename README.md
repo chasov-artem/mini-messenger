@@ -185,8 +185,8 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
    - Install Command: `npm install` (default)
 
 2. **Environment Variables:**
-   - `NEXT_PUBLIC_API_URL` = `https://your-backend.onrender.com` (your Render backend URL)
-   - `NEXT_PUBLIC_WS_URL` = `wss://your-backend.onrender.com` (WebSocket URL, use `wss://` for secure connection)
+   - `NEXT_PUBLIC_API_URL` = `https://mini-messenger-s.chasov-dev.com` (your Render backend URL)
+   - `NEXT_PUBLIC_WS_URL` = `wss://mini-messenger-s.chasov-dev.com` (WebSocket URL, use `wss://` for secure connection)
 
 3. **Deploy:** Click "Deploy" and Vercel will build and deploy your app
 

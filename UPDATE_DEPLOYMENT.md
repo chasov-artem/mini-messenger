@@ -66,8 +66,8 @@ Vercel автоматично виявить зміни в GitHub і почне 
 
 1. Перейдіть в **Settings** → **Environment Variables**
 2. Перевірте, що є:
-   - `NEXT_PUBLIC_API_URL` = `https://your-render-app.onrender.com`
-   - `NEXT_PUBLIC_WS_URL` = `wss://your-render-app.onrender.com`
+   - `NEXT_PUBLIC_API_URL` = `https://mini-messenger-s.chasov-dev.com`
+   - `NEXT_PUBLIC_WS_URL` = `wss://mini-messenger-s.chasov-dev.com`
 
 **Якщо змінних немає** - додайте їх:
 - Натисніть **"Add"**
@@ -115,9 +115,9 @@ Vercel автоматично виявить зміни в GitHub і почне 
 
 ### Vercel:
 - [ ] Код автоматично задеплоївся (або передеплоїв вручну)
-- [ ] `NEXT_PUBLIC_API_URL` встановлено
-- [ ] `NEXT_PUBLIC_WS_URL` встановлено
-- [ ] Frontend працює
+- [ ] `NEXT_PUBLIC_API_URL` = `https://mini-messenger-s.chasov-dev.com`
+- [ ] `NEXT_PUBLIC_WS_URL` = `wss://mini-messenger-s.chasov-dev.com`
+- [ ] Frontend працює на `https://mini-messenger.chasov-dev.com`
 
 ### Тестування:
 - [ ] Реєстрація працює

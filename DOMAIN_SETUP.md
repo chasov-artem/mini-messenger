@@ -10,17 +10,22 @@
 
 ---
 
-## 🎯 Варіанти налаштування
+## 🎯 Ваші домени
+
+- **Frontend (Vercel):** `mini-messenger.chasov-dev.com`
+- **Backend (Render):** `mini-messenger-s.chasov-dev.com`
+
+---
+
+## 🎯 Варіанти налаштування (загальна інформація)
 
 ### Варіант 1: Один домен з піддоменами (рекомендовано)
 - `yourdomain.com` → Vercel (фронтенд)
 - `api.yourdomain.com` → Render (бекенд)
 
-### Варіант 2: Два окремі домени
-- `yourdomain.com` → Vercel (фронтенд)
-- `api-yourdomain.com` → Render (бекенд)
-
-**Рекомендую Варіант 1** - він простіший та професійніший.
+### Варіант 2: Два окремі домени (ваш випадок)
+- `mini-messenger.chasov-dev.com` → Vercel (фронтенд)
+- `mini-messenger-s.chasov-dev.com` → Render (бекенд)
 
 ---
 
@@ -32,11 +37,11 @@
 2. Виберіть ваш **Web Service** (бекенд)
 3. Перейдіть в **Settings** → **Custom Domains**
 4. Натисніть **"Add Custom Domain"**
-5. Введіть піддомен (наприклад: `api.yourdomain.com`)
+5. Введіть піддомен: `mini-messenger-s.chasov-dev.com`
 6. Render покаже вам **DNS записи**, які потрібно додати:
    - Тип: `CNAME`
-   - Ім'я: `api` (або ваш піддомен)
-   - Значення: `your-app.onrender.com` (ваш Render URL)
+   - Ім'я: `mini-messenger-s`
+   - Значення: `your-app.onrender.com` (ваш Render URL, наприклад `mini-messenger-xxxx.onrender.com`)
 
 ### 1.2 Налаштування DNS в HostIQ
 
@@ -45,8 +50,8 @@
 3. Знайдіть ваш домен
 4. Додайте новий запис:
    - **Тип:** `CNAME`
-   - **Ім'я/Хост:** `api` (або ваш піддомен)
-   - **Значення/Посилання:** `your-app.onrender.com` (ваш Render URL)
+   - **Ім'я/Хост:** `mini-messenger-s`
+   - **Значення/Посилання:** `your-app.onrender.com` (ваш Render URL, наприклад `mini-messenger-xxxx.onrender.com`)
    - **TTL:** `3600` (або за замовчуванням)
 
 ### 1.3 Очікування активації
@@ -59,7 +64,7 @@
 
 Перевірте, що бекенд доступний:
 ```bash
-curl https://api.yourdomain.com/health
+curl https://mini-messenger-s.chasov-dev.com/health
 # Має повернути: {"status":"ok"}
 ```
 
@@ -73,37 +78,24 @@ curl https://api.yourdomain.com/health
 2. Виберіть ваш проект
 3. Перейдіть в **Settings** → **Domains**
 4. Натисніть **"Add Domain"**
-5. Введіть ваш домен (наприклад: `yourdomain.com` або `www.yourdomain.com`)
+5. Введіть ваш домен: `mini-messenger.chasov-dev.com`
 6. Vercel покаже вам **DNS записи**:
-   - Для кореневого домену (`yourdomain.com`):
-     - Тип: `A` або `CNAME`
-     - Значення: IP адреси або CNAME від Vercel
-   - Для `www.yourdomain.com`:
-     - Тип: `CNAME`
+   - Для піддомену (`mini-messenger.chasov-dev.com`):
+     - Тип: `CNAME` (рекомендовано)
      - Значення: `cname.vercel-dns.com`
 
 ### 2.2 Налаштування DNS в HostIQ
 
-#### Для кореневого домену (`yourdomain.com`):
+#### Для піддомену (`mini-messenger.chasov-dev.com`):
 
-**Варіант A: A-записи (рекомендовано для кореневого домену)**
-- Додайте 4 A-записи з IP адресами від Vercel:
-  - **Тип:** `A`
-  - **Ім'я:** `@` або залиште порожнім
-  - **Значення:** IP адреси від Vercel (4 різні IP)
-  - **TTL:** `3600`
-
-**Варіант B: CNAME (якщо HostIQ підтримує CNAME для кореневого домену)**
+**CNAME запис (рекомендовано):**
 - **Тип:** `CNAME`
-- **Ім'я:** `@` або залиште порожнім
+- **Ім'я:** `mini-messenger`
 - **Значення:** `cname.vercel-dns.com`
 - **TTL:** `3600`
 
-#### Для www піддомену (`www.yourdomain.com`):
-- **Тип:** `CNAME`
-- **Ім'я:** `www`
-- **Значення:** `cname.vercel-dns.com`
-- **TTL:** `3600`
+**Альтернатива: A-записи (якщо HostIQ не підтримує CNAME для піддоменів)**
+- Додайте 4 A-записи з IP адресами від Vercel (отримаєте в Vercel при додаванні домену)
 
 ### 2.3 Очікування активації
 
@@ -113,7 +105,7 @@ curl https://api.yourdomain.com/health
 
 ### 2.4 Перевірка
 
-Відкрийте в браузері: `https://yourdomain.com`
+Відкрийте в браузері: `https://mini-messenger.chasov-dev.com`
 - Має відкритися ваш додаток
 
 ---
@@ -124,8 +116,8 @@ curl https://api.yourdomain.com/health
 
 1. Перейдіть в **Settings** → **Environment Variables**
 2. Оновіть значення:
-   - `NEXT_PUBLIC_API_URL` = `https://api.yourdomain.com`
-   - `NEXT_PUBLIC_WS_URL` = `wss://api.yourdomain.com`
+   - `NEXT_PUBLIC_API_URL` = `https://mini-messenger-s.chasov-dev.com`
+   - `NEXT_PUBLIC_WS_URL` = `wss://mini-messenger-s.chasov-dev.com`
 
 3. **Важливо:** Після зміни змінних **передеплоїте** проект:
    - Перейдіть в **Deployments**
@@ -138,7 +130,7 @@ curl https://api.yourdomain.com/health
 1. Перейдіть в Render → **Environment Variables**
 2. Додайте нову змінну:
    - **Key:** `ALLOWED_ORIGINS`
-   - **Value:** `https://yourdomain.com,https://www.yourdomain.com`
+   - **Value:** `https://mini-messenger.chasov-dev.com,https://www.mini-messenger.chasov-dev.com`
    - (Додайте всі ваші домени через кому)
 3. Перезапустіть сервіс (Render зробить це автоматично після зміни змінних)
 
@@ -161,13 +153,13 @@ curl https://api.yourdomain.com/health
 ## ✅ Крок 5: Перевірка роботи
 
 ### 5.1 Перевірка Frontend
-1. Відкрийте `https://yourdomain.com`
+1. Відкрийте `https://mini-messenger.chasov-dev.com`
 2. Перевірте консоль браузера (F12):
-   - Має бути: `🔍 API_BASE: https://api.yourdomain.com`
+   - Має бути: `🔍 API_BASE: https://mini-messenger-s.chasov-dev.com`
    - Не має бути помилок CORS
 
 ### 5.2 Перевірка Backend
-1. Відкрийте `https://api.yourdomain.com/health`
+1. Відкрийте `https://mini-messenger-s.chasov-dev.com/health`
 2. Має повернути: `{"status":"ok"}`
 
 ### 5.3 Перевірка WebSocket
@@ -193,26 +185,18 @@ curl https://api.yourdomain.com/health
 ### Проблема: CORS помилки
 
 **Рішення:**
-1. Перевірте `NEXT_PUBLIC_API_URL` у Vercel
-2. Оновіть CORS налаштування в `server/src/index.ts`:
-   ```typescript
-   app.use(cors({
-     origin: [
-       'https://yourdomain.com',
-       'https://www.yourdomain.com',
-       'https://your-vercel-app.vercel.app' // старий URL для сумісності
-     ],
-     credentials: true,
-   }));
-   ```
-3. Передеплоїте бекенд на Render
+1. Перевірте `NEXT_PUBLIC_API_URL` у Vercel (має бути `https://mini-messenger-s.chasov-dev.com`)
+2. Перевірте `ALLOWED_ORIGINS` у Render (має містити `https://mini-messenger.chasov-dev.com`)
+3. Переконайтеся, що немає зайвих пробілів у значенні `ALLOWED_ORIGINS`
+4. Перезапустіть Render сервіс
 
 ### Проблема: WebSocket не підключається
 
 **Рішення:**
-1. Перевірте `NEXT_PUBLIC_WS_URL` у Vercel
+1. Перевірте `NEXT_PUBLIC_WS_URL` у Vercel (має бути `wss://mini-messenger-s.chasov-dev.com`)
 2. Переконайтеся, що використовується `wss://` (не `ws://`)
-3. Перевірте, що Render підтримує WebSocket через ваш кастомний домен
+3. Перевірте консоль браузера на наявність помилок WebSocket
+4. Перевірте, що Render підтримує WebSocket через ваш кастомний домен
 
 ### Проблема: SSL сертифікат не видається
 
@@ -227,26 +211,28 @@ curl https://api.yourdomain.com/health
 ## 📝 Швидкий чеклист
 
 ### HostIQ DNS:
-- [ ] Додано CNAME для `api.yourdomain.com` → Render URL
-- [ ] Додано A/CNAME для `yourdomain.com` → Vercel
-- [ ] Додано CNAME для `www.yourdomain.com` → Vercel
+- [ ] Додано CNAME для `mini-messenger-s` → Render URL
+- [ ] Додано CNAME для `mini-messenger` → Vercel (`cname.vercel-dns.com`)
 
 ### Render:
-- [ ] Додано Custom Domain `api.yourdomain.com`
+- [ ] Додано Custom Domain `mini-messenger-s.chasov-dev.com`
 - [ ] DNS записи перевірені (статус "Active")
 - [ ] SSL сертифікат активний
+- [ ] Додано `ALLOWED_ORIGINS = https://mini-messenger.chasov-dev.com,https://www.mini-messenger.chasov-dev.com`
+- [ ] Перезапущено сервіс після зміни змінних
 
 ### Vercel:
-- [ ] Додано Domain `yourdomain.com`
+- [ ] Додано Domain `mini-messenger.chasov-dev.com`
 - [ ] DNS записи перевірені (статус "Valid Configuration")
 - [ ] SSL сертифікат активний
-- [ ] Оновлено `NEXT_PUBLIC_API_URL` = `https://api.yourdomain.com`
-- [ ] Оновлено `NEXT_PUBLIC_WS_URL` = `wss://api.yourdomain.com`
-- [ ] Проект передеплоєно
+- [ ] Оновлено `NEXT_PUBLIC_API_URL` = `https://mini-messenger-s.chasov-dev.com`
+- [ ] Оновлено `NEXT_PUBLIC_WS_URL` = `wss://mini-messenger-s.chasov-dev.com`
+- [ ] Проект передеплоєно після зміни змінних
 
 ### Тестування:
-- [ ] `https://yourdomain.com` відкривається
-- [ ] `https://api.yourdomain.com/health` працює
+- [ ] `https://mini-messenger.chasov-dev.com` відкривається
+- [ ] `https://mini-messenger-s.chasov-dev.com/health` працює
+- [ ] Консоль браузера показує правильний API_BASE
 - [ ] Реєстрація/логін працює
 - [ ] Повідомлення відправляються
 - [ ] WebSocket працює (реал-тайм повідомлення)
@@ -257,10 +243,10 @@ curl https://api.yourdomain.com/health
 
 Після виконання всіх кроків ваш додаток буде доступний на власному домені!
 
-**Приклад конфігурації:**
-- Frontend: `https://yourdomain.com`
-- Backend API: `https://api.yourdomain.com`
-- WebSocket: `wss://api.yourdomain.com`
+**Ваша конфігурація:**
+- Frontend: `https://mini-messenger.chasov-dev.com`
+- Backend API: `https://mini-messenger-s.chasov-dev.com`
+- WebSocket: `wss://mini-messenger-s.chasov-dev.com`
 
 ---
 
