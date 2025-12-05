@@ -11,9 +11,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 const prisma = new PrismaClient();
 
 const app = express();
+
+// CORS configuration - supports custom domains
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+  : undefined;
+
 app.use(
   cors({
-    origin: true, // Allow all origins (for now)
+    origin: allowedOrigins || true, // Use ALLOWED_ORIGINS env var or allow all (for development)
     credentials: true,
   }),
 );

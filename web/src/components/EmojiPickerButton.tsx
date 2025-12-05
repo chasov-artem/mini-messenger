@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData, EmojiStyle } from "emoji-picker-react";
 
 type EmojiPickerButtonProps = {
   onEmojiClick: (emoji: string) => void;
@@ -122,7 +122,7 @@ export default function EmojiPickerButton({
             previewConfig={{ showPreview: false }}
             searchDisabled={false}
             skinTonesDisabled
-            emojiStyle="google"
+            emojiStyle={EmojiStyle.GOOGLE}
             lazyLoadEmojis={true}
           />
         </div>
