@@ -217,9 +217,6 @@ app.get('/conversations', authenticateToken, async (req: AuthRequest, res) => {
 app.get('/conversations/:id/members', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const conversationId = req.params.id;
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
     const memberships = await prisma.membership.findMany({
       where: { conversationId },
       include: { user: true },
@@ -234,9 +231,6 @@ app.get('/conversations/:id/members', authenticateToken, async (req: AuthRequest
 app.patch('/conversations/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const conversationId = req.params.id;
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
     const { title } = req.body as { title?: string };
     if (!title || title.trim() === '') {
       return res.status(400).json({ error: 'title is required' });
@@ -278,9 +272,6 @@ app.patch('/conversations/:id', authenticateToken, async (req: AuthRequest, res)
 app.post('/conversations/:id/members', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const conversationId = req.params.id;
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
     const { userId, username } = req.body as { userId?: string; username?: string };
     
     let targetUserId = userId;
@@ -342,9 +333,6 @@ app.delete('/conversations/:id/members/:userId', authenticateToken, async (req: 
   try {
     const conversationId = req.params.id;
     const userId = req.params.userId;
-    if (!conversationId || !userId) {
-      return res.status(400).json({ error: 'conversationId and userId are required' });
-    }
     
     // Check if membership exists
     const membership = await prisma.membership.findUnique({
@@ -389,9 +377,6 @@ app.delete('/conversations/:id/members/:userId', authenticateToken, async (req: 
 app.post('/conversations/:id/leave', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const conversationId = req.params.id;
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
     const userId = req.userId!;
     
     // Check if membership exists
@@ -443,9 +428,6 @@ app.post('/conversations/:id/leave', authenticateToken, async (req: AuthRequest,
 app.delete('/conversations/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const conversationId = req.params.id;
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
     const userId = req.userId!;
     
     // Check if conversation exists
@@ -565,9 +547,6 @@ app.get('/messages', authenticateToken, async (req: AuthRequest, res) => {
 app.patch('/messages/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const messageId = req.params.id;
-    if (!messageId) {
-      return res.status(400).json({ error: 'messageId is required' });
-    }
     const { text } = req.body as { text?: string };
     if (!text) {
       return res.status(400).json({ error: 'text required' });
@@ -602,9 +581,6 @@ app.patch('/messages/:id', authenticateToken, async (req: AuthRequest, res) => {
 app.delete('/messages/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const messageId = req.params.id;
-    if (!messageId) {
-      return res.status(400).json({ error: 'messageId is required' });
-    }
     const authorId = req.userId!;
     const existing = await prisma.message.findUnique({ where: { id: messageId } });
     if (!existing) return res.status(404).json({ error: 'message not found' });
@@ -680,9 +656,6 @@ app.post('/messages/read', authenticateToken, async (req: AuthRequest, res) => {
 app.post('/messages/:id/reactions', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const messageId = req.params.id;
-    if (!messageId) {
-      return res.status(400).json({ error: 'messageId is required' });
-    }
     const { emoji } = req.body as { emoji?: string };
     if (!emoji) {
       return res.status(400).json({ error: 'emoji required' });

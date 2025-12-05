@@ -115,6 +115,31 @@ export default function Home() {
     [user.id, conversationId],
   );
 
+  // Load conversations
+  const loadConversations = useCallback(
+    async (explicitUserId?: string) => {
+      const uid = explicitUserId ?? user.id;
+      if (!uid) return;
+      try {
+        setIsLoadingConversations(true);
+        const r = await fetch(`${API_BASE}/conversations`, {
+          headers: getAuthHeaders(),
+        });
+        if (r.ok) {
+          const data = (await r.json()) as Conversation[];
+          setConversations(Array.isArray(data) ? data : []);
+        } else {
+          setConversations([]);
+        }
+      } catch {
+        setConversations([]);
+      } finally {
+        setIsLoadingConversations(false);
+      }
+    },
+    [user.id],
+  );
+
   // Load more messages (older ones)
   const loadMoreMessages = useCallback(async () => {
     if (!conversationId || isLoadingMore || !hasMore) return;
@@ -413,7 +438,7 @@ export default function Home() {
       ws.close();
       wsRef.current = null;
     };
-  }, [conversationId, user.id, markMessagesAsRead]);
+  }, [conversationId, user.id, markMessagesAsRead, loadConversations]);
 
   // Best-effort: if socket is already open when conversationId changes, (re)send join
   useEffect(() => {
@@ -606,31 +631,9 @@ export default function Home() {
     setConversationMembers([]);
   }
 
-  async function loadConversations(explicitUserId?: string) {
-    const uid = explicitUserId ?? user.id;
-    if (!uid) return;
-    try {
-      setIsLoadingConversations(true);
-      const r = await fetch(`${API_BASE}/conversations`, {
-        headers: getAuthHeaders(),
-      });
-      if (r.ok) {
-        const data = (await r.json()) as Conversation[];
-        setConversations(Array.isArray(data) ? data : []);
-      } else {
-        setConversations([]);
-      }
-    } catch {
-      setConversations([]);
-    } finally {
-      setIsLoadingConversations(false);
-    }
-  }
-
   useEffect(() => {
     if (user.id) void loadConversations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id]);
+  }, [user.id, loadConversations]);
 
   // Clean up old typing indicators
   useEffect(() => {
@@ -1188,7 +1191,11 @@ export default function Home() {
                     onChange={(e) => setUsernameInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        authMode === "login" ? handleLogin() : handleRegister();
+                        if (authMode === "login") {
+                          handleLogin();
+                        } else {
+                          handleRegister();
+                        }
                       }
                     }}
                     autoFocus
@@ -1206,7 +1213,11 @@ export default function Home() {
                     onChange={(e) => setPasswordInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        authMode === "login" ? handleLogin() : handleRegister();
+                        if (authMode === "login") {
+                          handleLogin();
+                        } else {
+                          handleRegister();
+                        }
                       }
                     }}
                   />
@@ -1710,6 +1721,24 @@ export default function Home() {
               <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#171717] px-6 py-4">
                 <div className="max-w-3xl mx-auto">
                   <div className="flex gap-3 items-center">
+                    <div className="flex-1 relative">
+                      <textarea
+                        ref={textareaRef}
+                        className="w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
+                        placeholder="Type a message..."
+                        value={text}
+                        onChange={(e) => {
+                          handleTextChange(e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        rows={1}
+                      />
+                    </div>
                     <EmojiPickerButton
                       onEmojiClick={(emoji) => {
                         // Get cursor position, using nullish coalescing to handle 0 correctly
@@ -1744,25 +1773,8 @@ export default function Home() {
                       className="text-xl hover:scale-110 transition-transform cursor-pointer"
                       title="Add emoji"
                       showQuickReactions={false}
+                      openDirection="top"
                     />
-                    <div className="flex-1 relative">
-                      <textarea
-                        ref={textareaRef}
-                        className="w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none max-h-32"
-                        placeholder="Type a message..."
-                        value={text}
-                        onChange={(e) => {
-                          handleTextChange(e.target.value);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                          }
-                        }}
-                        rows={1}
-                      />
-                    </div>
                     <button
                       className="px-6 py-2.5 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed h-fit"
                       onClick={handleSend}
